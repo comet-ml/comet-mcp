@@ -57,6 +57,14 @@ class MCPChatbot:
         self.sessions: Dict[str, ClientSession] = {}
         self.processes: Dict[str, subprocess.Popen] = {}
         self.exit_stack = AsyncExitStack()
+        
+        # Initialize persistent message history with system prompt
+        self.messages: List[Dict[str, Any]] = [
+            {
+                "role": "system",
+                "content": "You are a helpful AI assistant that can use various tools to help users with their tasks. You have access to MCP (Model Context Protocol) servers that provide specialized tools. When users ask questions, use the available tools to gather information and provide comprehensive answers."
+            }
+        ]
 
     @staticmethod
     def load_config(config_path: str = "config.json") -> List[ServerConfig]:
@@ -219,14 +227,17 @@ class MCPChatbot:
         # 1) Fetch tool catalog from all MCP servers
         tools = await self._get_all_tools()
 
-        # 2) Chat loop with tool calling
-        messages: List[Dict[str, Any]] = [_mk_user_msg(user_text)]
+        # 2) Add user message to persistent history
+        user_msg = _mk_user_msg(user_text)
+        self.messages.append(user_msg)
+
+        # 3) Chat loop with tool calling using persistent messages
         text_reply: str = ""
 
         for _ in range(self.max_rounds):
             resp = completion(
                 model=self.model,
-                messages=messages,
+                messages=self.messages,
                 tools=tools if tools else None,
                 tool_choice="auto" if tools else "none",
                 **self.model_kwargs
@@ -237,9 +248,11 @@ class MCPChatbot:
             tool_calls = getattr(choice, "tool_calls", None)
             if not tool_calls:
                 text_reply = (choice.content or "").strip()
+                # Add assistant's final response to persistent history
+                self.messages.append({"role": "assistant", "content": text_reply})
                 break
 
-            # 3) Execute each requested tool via MCP
+            # 4) Execute each requested tool via MCP
             executed_tool_msgs: List[Dict[str, Any]] = []
             assistant_tool_stub = []
 
@@ -254,11 +267,28 @@ class MCPChatbot:
                 })
                 executed_tool_msgs.append(_mk_tool_result_msg(tc.id, content_str))
 
-            # Add the assistant tool-call stub + tool results before next round
-            messages.append(_mk_assistant_tool_msg(assistant_tool_stub))
-            messages.extend(executed_tool_msgs)
+            # Add the assistant tool-call stub + tool results to persistent history
+            self.messages.append(_mk_assistant_tool_msg(assistant_tool_stub))
+            self.messages.extend(executed_tool_msgs)
 
         return text_reply
+
+    def clear_messages(self):
+        """Clear the message history, keeping only the system prompt."""
+        self.messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful AI assistant that can use various tools to help users with their tasks. You have access to MCP (Model Context Protocol) servers that provide specialized tools. When users ask questions, use the available tools to gather information and provide comprehensive answers."
+            }
+        ]
+
+    def get_messages(self) -> List[Dict[str, Any]]:
+        """Get a copy of the current message history."""
+        return self.messages.copy()
+
+    def get_message_count(self) -> int:
+        """Get the number of messages in the history (excluding system prompt)."""
+        return len(self.messages) - 1  # Subtract 1 for system prompt
 
     async def run(self):
         """Run the complete chat session with server connections and chat loop."""
@@ -275,16 +305,27 @@ class MCPChatbot:
                 return
             
             print(f"\nConnected to {len(self.sessions)} server(s). Ready for chat!")
-            print("Type 'quit' or 'exit' to stop.\n")
+            print("Type 'quit' or 'exit' to stop.")
+            print("Type '/clear' to clear conversation history.\n")
             
             while True:
-                q = input("You: ").strip()
-                if not q or q.lower() in {"quit", "exit"}:
+                try:
+                    q = input("You: ")
+                except EOFError:
+                    q = ""
+
+                q = q.strip()
+                if q.lower() in {"quit", "exit", ""}:
                     break
+                elif q.lower() == "/clear":
+                    self.clear_messages()
+                    print("Conversation history cleared.")
+                    continue
                 a = await self.chat_once(q)
                 print("Bot:", a or "(no reply)")
                 print()  # Add spacing between exchanges
         finally:
+            print("\nClosing...")
             await self.close()
 
     async def close(self):
@@ -303,5 +344,8 @@ async def main():
     bot = MCPChatbot(config_path, model, model_kwargs, max_rounds)
     await bot.run()
 
-if __name__ == "__main__":
+def main_sync():
     asyncio.run(main())
+    
+if __name__ == "__main__":
+    main_sync()

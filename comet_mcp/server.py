@@ -16,7 +16,7 @@ from . import tools  # This ensures tools are registered
 from .utils import registry
 
 # Create the server
-server = Server("demo-server")
+server = Server("comet-mcp-server")
 
 @server.list_tools()
 async def list_tools() -> List[Tool]:
@@ -30,8 +30,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[Dict[str, Any]
 
 async def main():
     """Run the server."""
-    print("🚀 Demo MCP Server Starting...")
-    print("Available tools: add, multiply, greet")
+    print("🚀 Comet MCP Server Starting...")
+    print(f"Available tools: {registry.get_tools()}")
     
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
@@ -41,4 +41,4 @@ def main_sync():
     asyncio.run(main())
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main_sync()

@@ -62,6 +62,7 @@ Documentation = "https://github.com/comet-ml/comet-mcp#readme"
 
 [project.scripts]
 comet-mcp = "comet_mcp.server:main_sync"
+comet-mcp-chatbot = "comet_mcp.chatbot:main_sync"
 
 [tool.setuptools.packages.find]
 where = ["."]
