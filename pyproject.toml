@@ -61,7 +61,7 @@ Documentation = "https://github.com/comet-ml/comet-mcp#readme"
 "Bug Tracker" = "https://github.com/comet-ml/comet-mcp/issues"
 
 [project.scripts]
-comet-mcp-server = "comet_mcp.__main__:main"
+comet-mcp = "comet_mcp.server:main_sync"
 
 [tool.setuptools.packages.find]
 where = ["."]
