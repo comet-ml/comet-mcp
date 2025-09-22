@@ -14,6 +14,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+SYSTEM_PROMPT = """ 
+You are a helpful AI assistant that can use various tools to help
+users with their tasks. You have access to MCP (Model Context
+Protocol) servers that provide specialized tools. When users ask
+questions, use the available tools to gather information and provide
+comprehensive answers.
+"""
+
+
 @dataclass
 class ServerConfig:
     name: str
@@ -27,44 +36,53 @@ def _mcp_tools_to_openai_tools(tools_resp) -> List[Dict[str, Any]]:
     # Map MCP tool spec to OpenAI function tools
     tools = []
     for t in tools_resp.tools:
-        tools.append({
-            "type": "function",
-            "function": {
-                "name": t.name,
-                "description": t.description or "",
-                # MCP provides a proper JSON schema in inputSchema
-                "parameters": t.inputSchema or {"type": "object", "properties": {}},
-            },
-        })
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description or "",
+                    # MCP provides a proper JSON schema in inputSchema
+                    "parameters": t.inputSchema or {"type": "object", "properties": {}},
+                },
+            }
+        )
     return tools
+
 
 def _mk_user_msg(text: str) -> Dict[str, Any]:
     return {"role": "user", "content": text}
+
 
 def _mk_assistant_tool_msg(tool_calls: List[Dict[str, Any]]) -> Dict[str, Any]:
     # Record the assistant's tool calls so the model has the chain
     return {"role": "assistant", "tool_calls": tool_calls, "content": ""}
 
+
 def _mk_tool_result_msg(tool_call_id: str, content: str) -> Dict[str, Any]:
     return {"role": "tool", "tool_call_id": tool_call_id, "content": content}
 
+
 class MCPChatbot:
-    def __init__(self, config_path: str, model: str, model_kwargs: Dict[str, Any], max_rounds: int = 4):
+    def __init__(
+        self,
+        config_path: str,
+        model: str,
+        model_kwargs: Optional[Dict[str, Any]] = None,
+        system_prompt: Optional[str] = None,
+        max_rounds: Optional[int] = 4,
+    ):
+        self.system_prompt = (
+            system_prompt if system_prompt is not None else SYSTEM_PROMPT
+        )
         self.servers = self.load_config(config_path)
         self.model = model
-        self.model_kwargs = model_kwargs
+        self.model_kwargs = model_kwargs if model_kwargs is not None else {}
         self.max_rounds = max_rounds
         self.sessions: Dict[str, ClientSession] = {}
         self.processes: Dict[str, subprocess.Popen] = {}
         self.exit_stack = AsyncExitStack()
-        
-        # Initialize persistent message history with system prompt
-        self.messages: List[Dict[str, Any]] = [
-            {
-                "role": "system",
-                "content": "You are a helpful AI assistant that can use various tools to help users with their tasks. You have access to MCP (Model Context Protocol) servers that provide specialized tools. When users ask questions, use the available tools to gather information and provide comprehensive answers."
-            }
-        ]
+        self.clear_messages()
 
     @staticmethod
     def load_config(config_path: str = "config.json") -> List[ServerConfig]:
@@ -75,34 +93,40 @@ class MCPChatbot:
                     {
                         "name": "comet-mcp",
                         "description": "Comet ML MCP server for experiment management",
-                        "command": "comet-mcp"
+                        "command": "comet-mcp",
                     }
                 ]
             }
         else:
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 config = json.load(f)
-        
+
         servers = []
         for server_data in config.get("servers", []):
             # Expand environment variables in env dict
             env = server_data.get("env", {})
             expanded_env = {}
             for key, value in env.items():
-                if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+                if (
+                    isinstance(value, str)
+                    and value.startswith("${")
+                    and value.endswith("}")
+                ):
                     env_var = value[2:-1]
                     expanded_env[key] = os.getenv(env_var, "")
                 else:
                     expanded_env[key] = value
-            
-            servers.append(ServerConfig(
-                name=server_data["name"],
-                description=server_data.get("description", ""),
-                command=server_data["command"],
-                args=server_data.get("args", []),
-                env=expanded_env if expanded_env else None
-            ))
-        
+
+            servers.append(
+                ServerConfig(
+                    name=server_data["name"],
+                    description=server_data.get("description", ""),
+                    command=server_data["command"],
+                    args=server_data.get("args", []),
+                    env=expanded_env if expanded_env else None,
+                )
+            )
+
         return servers
 
     async def connect_all_servers(self):
@@ -110,7 +134,9 @@ class MCPChatbot:
         for server_config in self.servers:
             try:
                 await self._connect_server(server_config)
-                print(f"✓ Connected to {server_config.name}: {server_config.description}")
+                print(
+                    f"✓ Connected to {server_config.name}: {server_config.description}"
+                )
             except Exception as e:
                 print(f"✗ Failed to connect to {server_config.name}: {e}")
 
@@ -123,19 +149,21 @@ class MCPChatbot:
             for key, value in server_config.env.items():
                 original_env[key] = os.environ.get(key)
                 os.environ[key] = value
-        
+
         try:
             # Create MCP client session using stdio client
             params = StdioServerParameters(
                 command=server_config.command,
                 args=server_config.args,
             )
-            
+
             transport = await self.exit_stack.enter_async_context(stdio_client(params))
             stdin, write = transport
-            session = await self.exit_stack.enter_async_context(ClientSession(stdin, write))
+            session = await self.exit_stack.enter_async_context(
+                ClientSession(stdin, write)
+            )
             await session.initialize()
-            
+
             self.sessions[server_config.name] = session
         finally:
             # Restore original environment variables
@@ -155,7 +183,9 @@ class MCPChatbot:
                 server_tools = _mcp_tools_to_openai_tools(tools_resp)
                 # Prefix tool names with server name to avoid conflicts
                 for tool in server_tools:
-                    tool["function"]["name"] = f"{server_name}_{tool['function']['name']}"
+                    tool["function"][
+                        "name"
+                    ] = f"{server_name}_{tool['function']['name']}"
                 all_tools.extend(server_tools)
             except Exception as e:
                 print(f"Warning: Failed to get tools from {server_name}: {e}")
@@ -199,7 +229,7 @@ class MCPChatbot:
                         break
                 except Exception:
                     continue
-            
+
             if session is None:
                 return f"Error: Tool '{actual_tool_name}' not found in any connected server"
 
@@ -240,7 +270,7 @@ class MCPChatbot:
                 messages=self.messages,
                 tools=tools if tools else None,
                 tool_choice="auto" if tools else "none",
-                **self.model_kwargs
+                **self.model_kwargs,
             )
 
             choice = resp.choices[0].message
@@ -260,11 +290,16 @@ class MCPChatbot:
                 content_str = await self._execute_tool_call(tc)
 
                 # Build messages to feed back to the model
-                assistant_tool_stub.append({
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments or "{}"},
-                })
+                assistant_tool_stub.append(
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments or "{}",
+                        },
+                    }
+                )
                 executed_tool_msgs.append(_mk_tool_result_msg(tc.id, content_str))
 
             # Add the assistant tool-call stub + tool results to persistent history
@@ -278,7 +313,7 @@ class MCPChatbot:
         self.messages = [
             {
                 "role": "system",
-                "content": "You are a helpful AI assistant that can use various tools to help users with their tasks. You have access to MCP (Model Context Protocol) servers that provide specialized tools. When users ask questions, use the available tools to gather information and provide comprehensive answers."
+                "content": self.system_prompt,
             }
         ]
 
@@ -297,17 +332,17 @@ class MCPChatbot:
             print(f"Found {len(self.servers)} server(s) to connect to:")
             for server in self.servers:
                 print(f"  - {server.name}: {server.description}")
-            
+
             await self.connect_all_servers()
-            
+
             if not self.sessions:
                 print("No servers connected successfully. Exiting.")
                 return
-            
+
             print(f"\nConnected to {len(self.sessions)} server(s). Ready for chat!")
             print("Type 'quit' or 'exit' to stop.")
             print("Type '/clear' to clear conversation history.\n")
-            
+
             while True:
                 try:
                     q = input("You: ")
@@ -331,21 +366,27 @@ class MCPChatbot:
     async def close(self):
         await self.exit_stack.aclose()
 
+
 async def main():
     config_path = sys.argv[1] if len(sys.argv) > 1 else "config.json"
-    
+
     model = "openai/gpt-4o-mini"
-    model_kwargs = {
-        "temperature": 0.2,
-        "max_tokens": 700
-    }
-    max_rounds = 4
-    
-    bot = MCPChatbot(config_path, model, model_kwargs, max_rounds)
+    model_kwargs = {"temperature": 0.2, "max_tokens": 700}
+
+    system_prompt = """
+You are a helpful AI system for answering questions of Comet ML's
+experiment management system. You have access to many Comet tools.
+"""
+
+    bot = MCPChatbot(
+        config_path, model=model, model_kwargs=model_kwargs, system_prompt=system_prompt
+    )
     await bot.run()
+
 
 def main_sync():
     asyncio.run(main())
-    
+
+
 if __name__ == "__main__":
     main_sync()
