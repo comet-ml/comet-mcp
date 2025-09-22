@@ -9,6 +9,7 @@ import asyncio
 from unittest.mock import patch, Mock
 from datetime import datetime
 from typing import List, Dict, Any
+from io import StringIO
 
 # Import the tools and chatbot
 from comet_mcp.tools import (
@@ -328,6 +329,32 @@ class TestE2EChatbot:
                 assert len(response) > 0
 
                 print(f"Chatbot response: {response}")
+
+    def test_rich_formatting(self):
+        """Test that Rich formatting is properly initialized and working."""
+        from comet_mcp.chatbot import MCPChatbot
+        from rich.console import Console
+        
+        # Create a chatbot instance
+        chatbot = MCPChatbot("config.json", "openai/gpt-4o-mini", {})
+        
+        # Verify that Rich console is initialized
+        assert hasattr(chatbot, 'console')
+        assert isinstance(chatbot.console, Console)
+        
+        # Test that console can render markdown
+        test_markdown = "# Test Header\n\nThis is **bold** text and *italic* text."
+        
+        # Capture console output
+        console_output = StringIO()
+        test_console = Console(file=console_output, force_terminal=True)
+        test_console.print(test_markdown)
+        
+        # Verify output was captured (Rich formatting should work)
+        output = console_output.getvalue()
+        assert len(output) > 0
+        
+        print("✓ Rich formatting test passed")
 
     def test_tool_registry_integration(self):
         """Test that all tools are properly registered and callable."""

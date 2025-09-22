@@ -11,6 +11,10 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from litellm import completion  # can handle tools
 from dotenv import load_dotenv
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.text import Text
 
 load_dotenv()
 
@@ -82,6 +86,7 @@ class MCPChatbot:
         self.sessions: Dict[str, ClientSession] = {}
         self.processes: Dict[str, subprocess.Popen] = {}
         self.exit_stack = AsyncExitStack()
+        self.console = Console()
         self.clear_messages()
 
     @staticmethod
@@ -134,11 +139,13 @@ class MCPChatbot:
         for server_config in self.servers:
             try:
                 await self._connect_server(server_config)
-                print(
-                    f"✓ Connected to {server_config.name}: {server_config.description}"
+                self.console.print(
+                    f"[green]✓[/green] Connected to [bold]{server_config.name}[/bold]: {server_config.description}"
                 )
             except Exception as e:
-                print(f"✗ Failed to connect to {server_config.name}: {e}")
+                self.console.print(
+                    f"[red]✗[/red] Failed to connect to [bold]{server_config.name}[/bold]: {e}"
+                )
 
     async def _connect_server(self, server_config: ServerConfig):
         """Connect to a single MCP server via subprocess."""
@@ -188,7 +195,7 @@ class MCPChatbot:
                     ] = f"{server_name}_{tool['function']['name']}"
                 all_tools.extend(server_tools)
             except Exception as e:
-                print(f"Warning: Failed to get tools from {server_name}: {e}")
+                self.console.print(f"[yellow]Warning:[/yellow] Failed to get tools from [bold]{server_name}[/bold]: {e}")
         return all_tools
 
     async def _execute_tool_call(self, tool_call) -> str:
@@ -328,20 +335,20 @@ class MCPChatbot:
     async def run(self):
         """Run the complete chat session with server connections and chat loop."""
         try:
-            print(f"Loaded configuration")
-            print(f"Found {len(self.servers)} server(s) to connect to:")
+            self.console.print("[bold blue]Loaded configuration[/bold blue]")
+            self.console.print(f"Found [bold]{len(self.servers)}[/bold] server(s) to connect to:")
             for server in self.servers:
-                print(f"  - {server.name}: {server.description}")
+                self.console.print(f"  - [cyan]{server.name}[/cyan]: {server.description}")
 
             await self.connect_all_servers()
 
             if not self.sessions:
-                print("No servers connected successfully. Exiting.")
+                self.console.print("[red]No servers connected successfully. Exiting.[/red]")
                 return
 
-            print(f"\nConnected to {len(self.sessions)} server(s). Ready for chat!")
-            print("Type 'quit' or 'exit' to stop.")
-            print("Type '/clear' to clear conversation history.\n")
+            self.console.print(f"\n[green]Connected to {len(self.sessions)} server(s). Ready for chat![/green]")
+            self.console.print("[dim]Type 'quit' or 'exit' to stop.[/dim]")
+            self.console.print("[dim]Type '/clear' to clear conversation history.[/dim]\n")
 
             while True:
                 try:
@@ -354,13 +361,19 @@ class MCPChatbot:
                     break
                 elif q.lower() == "/clear":
                     self.clear_messages()
-                    print("Conversation history cleared.")
+                    self.console.print("[yellow]Conversation history cleared.[/yellow]")
                     continue
                 a = await self.chat_once(q)
-                print("Bot:", a or "(no reply)")
-                print()  # Add spacing between exchanges
+                
+                # Display bot response with Rich markdown formatting
+                if a:
+                    self.console.print("\n[bold blue]Bot:[/bold blue]")
+                    self.console.print(Markdown(a))
+                else:
+                    self.console.print("[dim]Bot: (no reply)[/dim]")
+                self.console.print()  # Add spacing between exchanges
         finally:
-            print("\nClosing...")
+            self.console.print("\n[dim]Closing...[/dim]")
             await self.close()
 
     async def close(self):
