@@ -80,7 +80,7 @@ Run the server to provide tools to MCP clients:
 
 ```bash
 # Start the MCP server
-comet-mcp
+comet-mcp-server
 ```
 
 The server will:
@@ -132,7 +132,7 @@ Create a `config.json` file for custom server configurations:
     {
       "name": "comet-mcp",
       "description": "Comet ML MCP server for experiment management",
-      "command": "comet-mcp",
+      "command": "comet-mcp-server",
       "env": {
         "COMET_API_KEY": "${COMET_API_KEY}"
       }
