@@ -457,6 +457,31 @@ class MCPChatbot:
         await self.exit_stack.aclose()
 
 
+def create_default_config(config_path: str = "config.json"):
+    """Create a default config.json file with example configuration."""
+    default_config = {
+        "servers": [
+            {
+                "name": "comet-mcp-server",
+                "description": "Comet ML MCP server for experiment management",
+                "command": "comet-mcp-server",
+                "args": [],
+                "env": {
+                    "COMET_API_KEY": "${COMET_API_KEY}",
+                    "COMET_WORKSPACE": "${COMET_WORKSPACE}"
+                }
+            }
+        ]
+    }
+    
+    with open(config_path, "w") as f:
+        json.dump(default_config, f, indent=2)
+    
+    print(f"✅ Created default configuration file: {config_path}")
+    print("📝 Edit the file to customize your MCP server configuration")
+    print("🔧 You can add multiple servers, modify commands, and set environment variables")
+
+
 def parse_arguments():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
@@ -468,6 +493,7 @@ Examples:
   python -m comet_mcp.chatbot config.json         # Use specific config with local Opik
   python -m comet_mcp.chatbot --opik hosted       # Use hosted Opik instance
   python -m comet_mcp.chatbot --opik disabled     # Disable Opik tracing
+  python -m comet_mcp.chatbot --init              # Create default config.json
         """
     )
     
@@ -485,10 +511,21 @@ Examples:
         help="Opik tracing mode: local (default), hosted, or disabled"
     )
     
+    parser.add_argument(
+        "--init",
+        action="store_true",
+        help="Create a default config.json file and exit"
+    )
+    
     return parser.parse_args()
 
 async def main():
     args = parse_arguments()
+    
+    # Handle --init flag
+    if args.init:
+        create_default_config(args.config_path)
+        return
     
     # Configure Opik based on command-line argument
     configure_opik(args.opik)
