@@ -2,7 +2,13 @@
 # Example: python client.py config.json
 # If no config file is provided, uses config.json by default
 
-import asyncio, sys, json, os, subprocess
+import asyncio
+import sys
+import json
+import os
+import subprocess
+import uuid
+import argparse
 from contextlib import AsyncExitStack
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
@@ -10,13 +16,43 @@ from dataclasses import dataclass
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from litellm import completion  # can handle tools
+from litellm.integrations.opik.opik import OpikLogger
+import litellm
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
+from opik import track, opik_context
+import opik
 
 load_dotenv()
+
+def configure_opik(opik_mode: str = "hosted"):
+    """Configure Opik based on the specified mode."""
+    if opik_mode == "disabled":
+        return
+    
+    # Set the project name via environment variable
+    os.environ["OPIK_PROJECT_NAME"] = "comet-mcp-server"
+    
+    try:
+        if opik_mode == "local":
+            opik.configure(use_local=True)
+        elif opik_mode == "hosted":
+            # For hosted mode, Opik will use environment variables or default configuration
+            opik.configure(use_local=False)
+        else:
+            print(f"Warning: Unknown Opik mode '{opik_mode}', using hosted mode")
+            opik.configure(use_local=False)
+            
+        # Note: We don't use LiteLLM's OpikLogger as it creates separate traces
+        # Instead, we'll manually manage spans within the existing trace
+        print("✅ Opik configured for manual span management")
+        
+    except Exception as e:
+        print(f"Warning: Opik configuration failed: {e}")
+        print("Continuing without Opik tracing...")
 
 SYSTEM_PROMPT = """ 
 You are a helpful AI assistant that can use various tools to help
@@ -87,6 +123,8 @@ class MCPChatbot:
         self.processes: Dict[str, subprocess.Popen] = {}
         self.exit_stack = AsyncExitStack()
         self.console = Console()
+        # Generate unique thread-id for this chatbot instance
+        self.thread_id = str(uuid.uuid4())
         self.clear_messages()
 
     @staticmethod
@@ -96,9 +134,9 @@ class MCPChatbot:
             config = {
                 "servers": [
                     {
-                        "name": "comet-mcp",
+                        "name": "comet-mcp-server",
                         "description": "Comet ML MCP server for experiment management",
-                        "command": "comet-mcp",
+                        "command": "comet-mcp-server",
                     }
                 ]
             }
@@ -198,6 +236,7 @@ class MCPChatbot:
                 self.console.print(f"[yellow]Warning:[/yellow] Failed to get tools from [bold]{server_name}[/bold]: {e}")
         return all_tools
 
+    @track(name="execute_tool_call", type="tool")
     async def _execute_tool_call(self, tool_call) -> str:
         """Execute a tool call on the appropriate MCP server."""
         fn_name = tool_call.function.name
@@ -241,6 +280,9 @@ class MCPChatbot:
                 return f"Error: Tool '{actual_tool_name}' not found in any connected server"
 
         try:
+            # Log tool call start with input details
+            print(f"🔧 Calling tool: {actual_tool_name} with args: {args}")
+            
             # Call the MCP tool
             result = await session.call_tool(actual_tool_name, args)
 
@@ -253,13 +295,48 @@ class MCPChatbot:
             else:
                 content_str = str(result)
 
+            # Log tool call result
+            print(f"✅ Tool {actual_tool_name} completed successfully")
+            print(f"📊 Result length: {len(content_str)} characters")
+            
+            # The @track decorator will automatically capture:
+            # - Function name (actual_tool_name)
+            # - Input arguments (args)
+            # - Output result (content_str)
+            # - Execution time
+            # - Success/failure status
+            
             return content_str
         except Exception as e:
+            print(f"❌ Tool {actual_tool_name} failed: {e}")
+            # The @track decorator will capture the error details
             return f"Error executing tool '{actual_tool_name}': {e}"
 
+    @track(name="llm_completion", type="llm")
+    async def _call_llm_with_span(self, model: str, messages: List[Dict[str, Any]], tools: List[Dict[str, Any]] = None, **kwargs):
+        """Call LLM with proper Opik span management."""
+        # Call the LLM - Opik will automatically track this as a span within the current trace
+        resp = completion(
+            model=model,
+            messages=messages,
+            tools=tools if tools else None,
+            tool_choice="auto" if tools else "none",
+            **kwargs
+        )
+        
+        return resp
+
+    @track
     async def chat_once(self, user_text: str) -> str:
         if not self.sessions:
             raise RuntimeError("Not connected to any MCP servers.")
+
+        # Update Opik context with thread_id for conversation grouping
+        try:
+            opik_context.update_current_trace(thread_id=self.thread_id)
+        except Exception:
+            # Opik not available, continue without tracing
+            pass
 
         # 1) Fetch tool catalog from all MCP servers
         tools = await self._get_all_tools()
@@ -272,11 +349,11 @@ class MCPChatbot:
         text_reply: str = ""
 
         for _ in range(self.max_rounds):
-            resp = completion(
+            # Call LLM with proper span management within the current trace
+            resp = await self._call_llm_with_span(
                 model=self.model,
                 messages=self.messages,
                 tools=tools if tools else None,
-                tool_choice="auto" if tools else "none",
                 **self.model_kwargs,
             )
 
@@ -380,8 +457,41 @@ class MCPChatbot:
         await self.exit_stack.aclose()
 
 
+def parse_arguments():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Comet MCP Chatbot with Opik tracing support",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python -m comet_mcp.chatbot                    # Use default config with local Opik
+  python -m comet_mcp.chatbot config.json         # Use specific config with local Opik
+  python -m comet_mcp.chatbot --opik hosted       # Use hosted Opik instance
+  python -m comet_mcp.chatbot --opik disabled     # Disable Opik tracing
+        """
+    )
+    
+    parser.add_argument(
+        "config_path",
+        nargs="?",
+        default="config.json",
+        help="Path to the configuration file (default: config.json)"
+    )
+    
+    parser.add_argument(
+        "--opik",
+        choices=["local", "hosted", "disabled"],
+        default="hosted",
+        help="Opik tracing mode: local (default), hosted, or disabled"
+    )
+    
+    return parser.parse_args()
+
 async def main():
-    config_path = sys.argv[1] if len(sys.argv) > 1 else "config.json"
+    args = parse_arguments()
+    
+    # Configure Opik based on command-line argument
+    configure_opik(args.opik)
 
     model = "openai/gpt-4o-mini"
     model_kwargs = {"temperature": 0.2, "max_tokens": 700}
@@ -389,10 +499,13 @@ async def main():
     system_prompt = """
 You are a helpful AI system for answering questions of Comet ML's
 experiment management system. You have access to many Comet tools.
+
+* You don't need to show an experiment's id unless asked
+* Always show the date and time of any date field (like created_at)
 """
 
     bot = MCPChatbot(
-        config_path, model=model, model_kwargs=model_kwargs, system_prompt=system_prompt
+        args.config_path, model=model, model_kwargs=model_kwargs, system_prompt=system_prompt
     )
     await bot.run()
 

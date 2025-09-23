@@ -17,7 +17,6 @@ from comet_mcp.tools import (
     get_experiment_details,
     list_projects,
     get_session_info,
-    search_experiments,
     list_project_experiments,
     count_project_experiments,
 )
@@ -168,51 +167,14 @@ class TestE2ETools:
             assert "created_at" in exp
             assert "description" in exp
 
-    def test_search_experiments_e2e(self):
-        """Test searching experiments with real API."""
-        # Search for common terms
-        search_terms = ["test", "experiment", "model", "training"]
+    # Note: search_experiments function is not implemented in the tools module
+    # def test_search_experiments_e2e(self):
+    #     """Test searching experiments with real API."""
+    #     pass
 
-        for term in search_terms:
-            result = search_experiments(term)
-
-            # Verify structure
-            assert isinstance(result, dict)
-            assert "query" in result
-            assert "count" in result
-            assert "experiments" in result
-
-            assert result["query"] == term
-            assert isinstance(result["count"], int)
-            assert isinstance(result["experiments"], list)
-            assert result["count"] == len(result["experiments"])
-
-            if result["count"] > 0:
-                print(f"Search '{term}' found {result['count']} experiments")
-                break
-        else:
-            print("No experiments found for any search terms")
-
-    def test_search_experiments_with_project_e2e(self):
-        """Test searching experiments within a specific project."""
-        # First get available projects
-        projects = list_projects()
-
-        if not projects:
-            pytest.skip("No projects available for testing")
-
-        project_name = projects[0]["name"]
-        result = search_experiments("test", project_name=project_name)
-
-        # Verify structure
-        assert isinstance(result, dict)
-        assert "query" in result
-        assert "count" in result
-        assert "experiments" in result
-
-        print(
-            f"Search 'test' in project '{project_name}' found {result['count']} experiments"
-        )
+    # def test_search_experiments_with_project_e2e(self):
+    #     """Test searching experiments within a specific project."""
+    #     pass
 
     def test_get_experiment_details_e2e(self):
         """Test getting experiment details with real API."""
@@ -356,6 +318,31 @@ class TestE2EChatbot:
         
         print("✓ Rich formatting test passed")
 
+    def test_opik_integration(self):
+        """Test that Opik logging is properly integrated."""
+        from comet_mcp.chatbot import MCPChatbot
+        import uuid
+        
+        # Create a chatbot instance
+        chatbot = MCPChatbot("config.json", "openai/gpt-4o-mini", {})
+        
+        # Verify that thread_id is generated
+        assert hasattr(chatbot, 'thread_id')
+        assert isinstance(chatbot.thread_id, str)
+        assert len(chatbot.thread_id) > 0
+        
+        # Verify that thread_id is a valid UUID
+        try:
+            uuid.UUID(chatbot.thread_id)
+        except ValueError:
+            assert False, "thread_id should be a valid UUID"
+        
+        # Verify that chat_once method has the @track decorator
+        assert hasattr(chatbot.chat_once, '__wrapped__'), "chat_once should be decorated with @track"
+        
+        print("✓ Opik integration test passed")
+        print(f"  Thread ID: {chatbot.thread_id}")
+
     def test_tool_registry_integration(self):
         """Test that all tools are properly registered and callable."""
         from comet_mcp.utils import registry
@@ -370,7 +357,6 @@ class TestE2EChatbot:
             "get_experiment_details",
             "list_projects",
             "get_session_info",
-            "search_experiments",
             "list_project_experiments",
             "count_project_experiments",
         ]
@@ -444,9 +430,9 @@ class TestE2EProjectWorkflow:
         assert len(experiments) == experiment_count
         print(f"✓ Retrieved {len(experiments)} experiment details")
 
-        # Step 5: Search within project
-        search_result = search_experiments("test", project_name=project_name)
-        print(f"✓ Found {search_result['count']} experiments matching 'test'")
+        # Step 5: Search within project (commented out - function not implemented)
+        # search_result = search_experiments("test", project_name=project_name)
+        # print(f"✓ Found {search_result['count']} experiments matching 'test'")
 
         # Step 6: Get details for first experiment (if any)
         if experiments:
@@ -502,13 +488,13 @@ class TestE2EProjectWorkflow:
             assert "not found" in str(e).lower()
             print("✓ Handled non-existent experiment ID gracefully")
 
-        # Test search with no results
-        search_result = search_experiments(
-            "very-specific-term-that-should-not-exist-12345"
-        )
-        assert search_result["count"] == 0
-        assert search_result["experiments"] == []
-        print("✓ Handled search with no results gracefully")
+        # Test search with no results (commented out - function not implemented)
+        # search_result = search_experiments(
+        #     "very-specific-term-that-should-not-exist-12345"
+        # )
+        # assert search_result["count"] == 0
+        # assert search_result["experiments"] == []
+        # print("✓ Handled search with no results gracefully")
 
 
 if __name__ == "__main__":

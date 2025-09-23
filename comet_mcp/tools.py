@@ -275,5 +275,11 @@ def count_project_experiments(
             "project_name": project_name,
             "workspace": target_workspace,
             "experiment_count": count,
-            "experiments": experiments if experiments else [],
+            "experiments": [ExperimentInfo(
+                id=exp.id,
+                name=exp.name,
+                status=exp.get_state(),
+                created_at=format_datetime(exp.start_server_timestamp),
+                description=getattr(exp, "description", None),
+            ) for exp in experiments] if experiments else [],
         }
