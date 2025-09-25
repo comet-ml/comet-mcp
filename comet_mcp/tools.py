@@ -216,12 +216,12 @@ def get_plot_of_xy_data(data: List[List[float]], title: str = "XY Data Plot", me
     )
     
 @tool
-def get_default_project() -> str:
+def get_default_workspace() -> str:
     """
     Get the default project for the current workspace.
     """
     with get_comet_api() as api:
-        return api.get_default_project()
+        return api.get_default_workspace()
 
 
 @tool
@@ -372,10 +372,11 @@ def get_experiment_details(experiment_id: str) -> ExperimentDetails:
 @tool
 def list_projects(workspace: Optional[str] = None) -> List[ProjectInfo]:
     """
-    List projects in the Comet ML workspace.
+    List projects in the Comet ML workspace. Only use this tool
+    if you need a list of all Projects.
 
     Args:
-        workspace: Workspace name (optional, uses default if not provided)
+        workspace: Workspace name (optional, uses default workspace if not provided)
     """
     with get_comet_api() as api:
         if workspace:
