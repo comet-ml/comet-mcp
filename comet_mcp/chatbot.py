@@ -9,9 +9,13 @@ import os
 import subprocess
 import uuid
 import argparse
+import base64
+import tempfile
+import io
 from contextlib import AsyncExitStack
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
+from PIL import Image
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -289,7 +293,15 @@ class MCPChatbot:
             # Best-effort stringify of MCP result content
             if hasattr(result, "content") and result.content is not None:
                 try:
-                    content_str = json.dumps(result.content)
+                    content_data = result.content
+                    # Check if this is an ImageResult
+                    if (isinstance(content_data, dict) and 
+                        content_data.get("type") == "image_result" and
+                        "image_base64" in content_data):
+                        # Handle image result specially
+                        return self._handle_image_result(content_data, actual_tool_name)
+                    else:
+                        content_str = json.dumps(content_data)
                 except Exception:
                     content_str = str(result.content)
             else:
@@ -311,6 +323,37 @@ class MCPChatbot:
             print(f"❌ Tool {actual_tool_name} failed: {e}")
             # The @track decorator will capture the error details
             return f"Error executing tool '{actual_tool_name}': {e}"
+
+    def _handle_image_result(self, image_data: Dict[str, Any], tool_name: str) -> str:
+        """Handle image results by displaying them in a window using PIL."""
+        try:
+            # Decode base64 image data
+            image_base64 = image_data.get("image_base64", "")
+            content_type = image_data.get("content_type", "image/png")
+            
+            if not image_base64:
+                return f"Error: No image data received from {tool_name}"
+            
+            # Decode base64 to bytes
+            image_bytes = base64.b64decode(image_base64)
+            
+            # Create PIL Image from bytes
+            image = Image.open(io.BytesIO(image_bytes))
+            
+            # Log the image creation
+            print(f"🖼️  Image created by {tool_name}")
+            print(f"📊 Image size: {len(image_bytes)} bytes")
+            print(f"📐 Image dimensions: {image.size[0]}x{image.size[1]} pixels")
+            
+            # Display the image in a window
+            image.show()
+            
+            # Return a success message
+            return f"🖼️ Image displayed successfully! The plot should have opened in a new window."
+            
+        except Exception as e:
+            print(f"❌ Failed to handle image result from {tool_name}: {e}")
+            return f"Error processing image from {tool_name}: {e}"
 
     @track(name="llm_completion", type="llm")
     async def _call_llm_with_span(self, model: str, messages: List[Dict[str, Any]], tools: List[Dict[str, Any]] = None, **kwargs):
@@ -429,12 +472,14 @@ class MCPChatbot:
 
             while True:
                 try:
-                    q = input("You: ")
+                    q = input(">>> ")
                 except EOFError:
-                    q = ""
+                    break
 
                 q = q.strip()
-                if q.lower() in {"quit", "exit", ""}:
+                if q in {""}:
+                    continue
+                elif q.lower() in {"quit", "exit"}:
                     break
                 elif q.lower() == "/clear":
                     self.clear_messages()

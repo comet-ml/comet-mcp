@@ -40,6 +40,8 @@ dependencies = [
     "typing-extensions>=4.0.0",
     "rich>=13.0.0",
     "litellm>=1.0.0",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
 ]
 
 [project.optional-dependencies]

@@ -6,6 +6,9 @@ These tools require access to comet_ml.API() singleton.
 
 from typing import List, Dict, Any, Optional, TypedDict
 from datetime import datetime
+import base64
+import io
+import matplotlib.pyplot as plt
 from .utils import tool, format_datetime
 from .session import get_comet_api, get_session_context
 
@@ -30,8 +33,8 @@ class ExperimentDetails(TypedDict):
     created_at: str
     updated_at: str
     description: Optional[str]
-    metrics: List[Dict[str, Any]]
-    parameters: List[Dict[str, Any]]
+    metric_names: List[str]
+    parameter_names: List[str]
 
 
 class ProjectInfo(TypedDict):
@@ -48,6 +51,7 @@ class SessionInfo(TypedDict):
 
     initialized: bool
     api_status: str
+    user: Optional[str]
     workspace: Optional[str]
     error: Optional[str]
 
@@ -59,103 +63,310 @@ class SearchResults(TypedDict):
     count: int
     experiments: List[ExperimentInfo]
 
+class ImageResult(TypedDict):
+    """Result from an image-creating function."""
+
+    type: str
+    content_type: str
+    image_base64: str
+
 
 @tool
 def list_experiments(
-    workspace: Optional[str] = None, project_name: Optional[str] = None
+    workspace: str, project_name: str
 ) -> List[ExperimentInfo]:
     """
-    List recent experiments from Comet ML.
+    List recent experiments from Comet ML. Typically, don't show the
+    user the experiment_id unless they ask to see it.
 
     Args:
-        workspace: Workspace name (optional, uses default if not provided)
-        project_name: Project name to filter experiments (optional)
+        workspace: Workspace name (required)
+        project_name: Project name to filter experiments (required)
+    """
+    try:
+        with get_comet_api() as api:
+            # Get experiments for the specified workspace and project
+            experiments = api.get_experiments(workspace, project_name=project_name)
+
+            if not experiments:
+                return []
+
+            result = []
+            for exp in experiments:
+                result.append(
+                    ExperimentInfo(
+                        id=exp.id,
+                        name=exp.name,
+                        status=exp.get_state(),
+                        created_at=format_datetime(exp.start_server_timestamp),
+                        description=getattr(exp, "description", None),
+                    )
+                )
+
+            return result
+    except Exception as e:
+        raise Exception(f"Error listing experiments: {e}")
+
+@tool
+def get_plot_of_xy_data(data: List[List[float]], title: str = "XY Data Plot", metric_data: Optional[Dict[str, Any]] = None) -> ImageResult:
+    """
+    Create a plot of a list of [x, y] data points using matplotlib.
+    Can also plot multiple metrics from get_experiment_metrics.
+    
+    Args:
+        data: List of [x, y] coordinate pairs to plot (optional if metric_data provided)
+        title: Title for the plot (default: "XY Data Plot")
+        metric_data: Dictionary from get_experiment_metrics containing multiple metrics to plot
+        
+    Returns:
+        ImageResult with base64-encoded PNG image
+    """
+    # Create the plot
+    plt.figure(figsize=(12, 8))
+    
+    if metric_data and 'experiments' in metric_data:
+        # Plot multiple metrics from get_experiment_metrics (new structure)
+        experiments = metric_data['experiments']
+        colors = ['b-', 'r-', 'g-', 'm-', 'c-', 'y-', 'k-']  # Different colors for each metric
+        markers = ['o', 's', '^', 'v', 'D', 'p', '*']  # Different markers for each metric
+        color_index = 0
+        
+        for experiment_id, experiment_metrics in experiments.items():
+            for metric_name, metric_info in experiment_metrics.items():
+                if 'error' in metric_info:
+                    continue  # Skip metrics with errors
+                
+                data_points = metric_info['data']
+                if not data_points:
+                    continue
+                    
+                x_coords = [point[0] for point in data_points]
+                y_coords = [point[1] for point in data_points]
+                
+                color_style = colors[color_index % len(colors)]
+                marker_style = markers[color_index % len(markers)]
+                
+                # Create label with experiment ID and metric name
+                label = f"{experiment_id}: {metric_info.get('metric_name', metric_name)}"
+                
+                plt.plot(x_coords, y_coords, color_style, linewidth=2, 
+                        marker=marker_style, markersize=4, label=label)
+                color_index += 1
+        
+        plt.legend()
+        plt.xlabel(metric_data.get('x_axis', 'X'))
+        plt.ylabel('Metric Value')
+    elif metric_data and 'metrics' in metric_data:
+        # Plot multiple metrics from get_experiment_metrics (old structure for backward compatibility)
+        metrics = metric_data['metrics']
+        colors = ['b-', 'r-', 'g-', 'm-', 'c-', 'y-', 'k-']  # Different colors for each metric
+        markers = ['o', 's', '^', 'v', 'D', 'p', '*']  # Different markers for each metric
+        
+        for i, (metric_name, metric_info) in enumerate(metrics.items()):
+            if 'error' in metric_info:
+                continue  # Skip metrics with errors
+            
+            data_points = metric_info['data']
+            if not data_points:
+                continue
+                
+            x_coords = [point[0] for point in data_points]
+            y_coords = [point[1] for point in data_points]
+            
+            color_style = colors[i % len(colors)]
+            marker_style = markers[i % len(markers)]
+            
+            plt.plot(x_coords, y_coords, color_style, linewidth=2, 
+                    marker=marker_style, markersize=4, label=metric_info.get('metric_name', metric_name))
+        
+        plt.legend()
+        plt.xlabel(metric_data.get('x_axis', 'X'))
+        plt.ylabel('Metric Value')
+        
+    elif data:
+        # Plot single data series
+        x_coords = [point[0] for point in data]
+        y_coords = [point[1] for point in data]
+        
+        plt.plot(x_coords, y_coords, 'b-', linewidth=2, marker='o', markersize=4)
+        plt.xlabel('X')
+        plt.ylabel('Y')
+    else:
+        raise ValueError("Either data or metric_data must be provided")
+    
+    plt.title(title)
+    plt.grid(True, alpha=0.3)
+    
+    # Save plot to bytes buffer
+    buffer = io.BytesIO()
+    plt.savefig(buffer, format='png', dpi=150, bbox_inches='tight')
+    buffer.seek(0)
+    
+    # Convert to base64
+    image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+    
+    # Clean up
+    plt.close()
+    buffer.close()
+    
+    return ImageResult(
+        type="image_result",
+        content_type="image/png",
+        image_base64=image_base64
+    )
+    
+@tool
+def get_default_project() -> str:
+    """
+    Get the default project for the current workspace.
     """
     with get_comet_api() as api:
-        # Determine target workspace
-        if workspace:
-            target_workspace = workspace
-        else:
-            target_workspace = api.get_default_workspace()
-
-        # Get experiments with optional project filtering
-        if project_name:
-            experiments = api.get_experiments(
-                target_workspace, project_name=project_name
-            )
-        else:
-            experiments = api.get_experiments(target_workspace)
-
-        if not experiments:
-            return []
-
-        result = []
-        for exp in experiments:
-            result.append(
-                ExperimentInfo(
-                    id=exp.id,
-                    name=exp.name,
-                    status=exp.get_state(),
-                    created_at=format_datetime(exp.start_server_timestamp),
-                    description=getattr(exp, "description", None),
-                )
-            )
-
-        return result
+        return api.get_default_project()
 
 
 @tool
 def get_experiment_code(experiment_id: str) -> Dict[str, str]:
-    with get_comet_api() as api:
-        experiment = api.get_experiment_by_key(experiment_id)
-        return {"code": experiment.get_code()}
-
-
-@tool
-def get_experiment_details(experiment_id: str) -> ExperimentDetails:
     """
-    Get detailed information about a specific experiment.
+    Get the code for a specific experiment.
 
     Args:
         experiment_id: The ID of the experiment to retrieve
     """
     with get_comet_api() as api:
         experiment = api.get_experiment_by_key(experiment_id)
+        return {"code": experiment.get_code()}
 
-        if not experiment:
-            raise Exception(f"Experiment with ID '{experiment_id}' not found.")
+@tool
+def get_experiment_metric_data(experiment_ids: List[str], metric_names: List[str], x_axis: str) -> Dict[str, Any]:
+    """
+    Get multiple metric data for specific experiments. Use this tool to 
+    get metrics for multiple experiments at once. You must pass in at
+    least one experiment ID, and at least one metric name. Only use
+    this tool if you want the entire metric values.
 
-        # Get metrics
-        metrics = experiment.get_metrics_summary()
-        metrics_list = []
-        if metrics:
-            for metric in metrics[:10]:  # Show first 10 metrics
-                metrics_list.append(
-                    {"name": metric["name"], "value": metric["valueCurrent"]}
-                )
+    Args:
+        experiment_ids: List of experiment IDs to retrieve metrics for
+        metric_names: List of metric names to retrieve
+        x_axis: The name of the x-axis to retrieve. Must be: "steps", "epochs", "timestamps", or "durations"
+        
+    Returns:
+        Dictionary containing experiment_ids, x_axis, and metrics data with (x, y) coordinate pairs for plotting
+    """
+    with get_comet_api() as api:
+        try:
+            data = api.get_metrics_for_chart(experiment_ids, metric_names)
+            
+            results = {}
+            
+            # Process each experiment
+            for experiment_id in experiment_ids:
+                if experiment_id not in data:
+                    continue  # Skip experiments not found in data
+                
+                experiment_data = data[experiment_id]
+                if experiment_id not in experiment_data:
+                    continue  # Skip experiments without data
+                
+                experiment_metrics = {}
+                experiment_has_data = False
+                
+                # Process each metric for this experiment
+                for metric_name in metric_names:
+                    if metric_name not in experiment_data[experiment_id]["metrics"]:
+                        continue  # Skip metrics not found for this experiment
+                    
+                    metrics = experiment_data[experiment_id]["metrics"][metric_name]
+                    values = metrics["values"]
+                    
+                    # Handle x_axis selection - try in order: steps, epochs, timestamps, durations
+                    current_x_axis = x_axis
+                    if current_x_axis not in metrics:
+                        # Try to find an available x_axis in the order specified in docstring
+                        for fallback_axis in ["steps", "epochs", "timestamps", "durations"]:
+                            if fallback_axis in metrics:
+                                current_x_axis = fallback_axis
+                                break
+                        else:
+                            # If no standard x_axis is found, skip this metric
+                            continue
+                    
+                    x_axis_values = metrics[current_x_axis]
+                    
+                    # Convert timestamps to datetime objects if needed
+                    if current_x_axis == "timestamps":
+                        x_axis_values = [datetime.fromtimestamp(value) for value in x_axis_values]
+                    
+                    # Store metric data with metric name included
+                    experiment_metrics[metric_name] = {
+                        "metric_name": metric_name,
+                        "x_axis": current_x_axis,
+                        "data": list(zip(x_axis_values, values))  # (x, y) pairs for plotting
+                    }
+                    experiment_has_data = True
+                
+                # Only include experiments that have data
+                if experiment_has_data:
+                    results[experiment_id] = experiment_metrics
+            
+            return {
+                "experiment_ids": experiment_ids,
+                "x_axis": x_axis,
+                "experiments": results
+            }
+            
+        except Exception as e:
+            raise ValueError(f"Failed to get metrics {metric_names} for experiments {experiment_ids}: {e}")
 
-        # Get parameters
-        params = experiment.get_parameters_summary()
-        params_list = []
-        if params:
-            for param in params[:10]:  # Show first 10 parameters
-                params_list.append(
-                    {"name": param["name"], "value": param["valueCurrent"]}
-                )
 
-        return ExperimentDetails(
-            id=experiment.id,
-            url=experiment.url,
-            name=experiment.name,
-            status=experiment.get_state(),
-            created_at=format_datetime(experiment.start_server_timestamp),
-            updated_at=format_datetime(
-                experiment.end_server_timestamp or experiment.start_server_timestamp
-            ),
-            description=getattr(experiment, "description", None),
-            metrics=metrics_list,
-            parameters=params_list,
-        )
+@tool
+def get_experiment_details(experiment_id: str) -> ExperimentDetails:
+    """
+    Get detailed information about a specific experiment, including
+    metric and parameter names.
+
+    Args:
+        experiment_id: The ID of the experiment to retrieve
+    """
+    try:
+        with get_comet_api() as api:
+            experiment = api.get_experiment_by_key(experiment_id)
+
+            if not experiment:
+                raise Exception(f"Experiment with ID '{experiment_id}' not found.")
+
+            # Get metrics
+            metrics = experiment.get_metrics_summary()
+            metrics_list = []
+            if metrics:
+                for metric in metrics:
+                    metrics_list.append(
+                        metric["name"]
+                    )
+
+            # Get parameters
+            params = experiment.get_parameters_summary()
+            params_list = []
+            if params:
+                for param in params:
+                    params_list.append(
+                        param["name"]
+                    )
+
+            return ExperimentDetails(
+                id=experiment.id,
+                url=experiment.url,
+                name=experiment.name,
+                status=experiment.get_state(),
+                created_at=format_datetime(experiment.start_server_timestamp),
+                updated_at=format_datetime(
+                    experiment.end_server_timestamp or experiment.start_server_timestamp
+                ),
+                description=getattr(experiment, "description", None),
+                metric_names=metrics_list,
+                parameter_names=params_list,
+            )
+    except Exception as e:
+        raise Exception(f"Error getting experiment details for '{experiment_id}': {e}")
 
 
 @tool
@@ -202,10 +413,43 @@ def get_session_info() -> SessionInfo:
     """
     Get information about the current Comet ML session.
     """
-    with get_comet_api() as api:
-        workspace = api.get_default_workspace()
+    session_context = get_session_context()
+    
+    if not session_context.is_initialized():
         return SessionInfo(
-            initialized=True, api_status="Connected", workspace=workspace, error=None
+            initialized=False,
+            api_status="Not initialized",
+            user=None,
+            workspace=None,
+            error="Comet ML session is not initialized."
+        )
+    
+    try:
+        with get_comet_api() as api:
+            workspace = api.get_default_workspace()
+            
+            # Try to get user info
+            try:
+                user_info = api.get_user_info()
+                user = user_info.get("username") if user_info else None
+            except (AttributeError, Exception):
+                # Fallback to workspace info if user info not available
+                user = f"Connected to workspace: {workspace}"
+            
+            return SessionInfo(
+                initialized=True,
+                api_status="Connected",
+                user=user,
+                workspace=workspace,
+                error=None
+            )
+    except Exception as e:
+        return SessionInfo(
+            initialized=True,
+            api_status="Error",
+            user=None,
+            workspace=None,
+            error=str(e)
         )
 
 
@@ -220,32 +464,35 @@ def list_project_experiments(
         project_name: Name of the project to get experiments from
         workspace: Workspace name (optional, uses default if not provided)
     """
-    with get_comet_api() as api:
-        # Determine target workspace
-        if workspace:
-            target_workspace = workspace
-        else:
-            target_workspace = api.get_default_workspace()
+    try:
+        with get_comet_api() as api:
+            # Determine target workspace
+            if workspace:
+                target_workspace = workspace
+            else:
+                target_workspace = api.get_default_workspace()
 
-        # Get experiments for the specific project
-        experiments = api.get_experiments(target_workspace, project_name=project_name)
+            # Get experiments for the specific project
+            experiments = api.get_experiments(target_workspace, project_name=project_name)
 
-        if not experiments:
-            return []
+            if not experiments:
+                return []
 
-        result = []
-        for exp in experiments:
-            result.append(
-                ExperimentInfo(
-                    id=exp.id,
-                    name=exp.name,
-                    status=exp.get_state(),
-                    created_at=format_datetime(exp.start_server_timestamp),
-                    description=getattr(exp, "description", None),
+            result = []
+            for exp in experiments:
+                result.append(
+                    ExperimentInfo(
+                        id=exp.id,
+                        name=exp.name,
+                        status=exp.get_state(),
+                        created_at=format_datetime(exp.start_server_timestamp),
+                        description=getattr(exp, "description", None),
+                    )
                 )
-            )
 
-        return result
+            return result
+    except Exception as e:
+        raise Exception(f"Error listing experiments for project '{project_name}': {e}")
 
 
 @tool
@@ -259,27 +506,30 @@ def count_project_experiments(
         project_name: Name of the project to count experiments in
         workspace: Workspace name (optional, uses default if not provided)
     """
-    with get_comet_api() as api:
-        # Determine target workspace
-        if workspace:
-            target_workspace = workspace
-        else:
-            target_workspace = api.get_default_workspace()
+    try:
+        with get_comet_api() as api:
+            # Determine target workspace
+            if workspace:
+                target_workspace = workspace
+            else:
+                target_workspace = api.get_default_workspace()
 
-        # Get experiments for the specific project
-        experiments = api.get_experiments(target_workspace, project_name=project_name)
+            # Get experiments for the specific project
+            experiments = api.get_experiments(target_workspace, project_name=project_name)
 
-        count = len(experiments) if experiments else 0
+            count = len(experiments) if experiments else 0
 
-        return {
-            "project_name": project_name,
-            "workspace": target_workspace,
-            "experiment_count": count,
-            "experiments": [ExperimentInfo(
-                id=exp.id,
-                name=exp.name,
-                status=exp.get_state(),
-                created_at=format_datetime(exp.start_server_timestamp),
-                description=getattr(exp, "description", None),
-            ) for exp in experiments] if experiments else [],
-        }
+            return {
+                "project_name": project_name,
+                "workspace": target_workspace,
+                "experiment_count": count,
+                "experiments": [ExperimentInfo(
+                    id=exp.id,
+                    name=exp.name,
+                    status=exp.get_state(),
+                    created_at=format_datetime(exp.start_server_timestamp),
+                    description=getattr(exp, "description", None),
+                ) for exp in experiments] if experiments else [],
+            }
+    except Exception as e:
+        raise Exception(f"Error counting experiments for project '{project_name}': {e}")

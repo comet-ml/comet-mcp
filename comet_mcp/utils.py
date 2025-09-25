@@ -73,7 +73,14 @@ class ToolRegistry:
             # Get parameter description from docstring or default
             description = self._get_param_description(func, param_name)
 
-            properties[param_name] = {"type": param_type, "description": description}
+            # Create the property schema
+            property_schema = {"type": param_type, "description": description}
+            
+            # Handle array types - add items schema
+            if param_type == "array":
+                property_schema["items"] = self._get_array_items_schema(param.annotation)
+
+            properties[param_name] = property_schema
 
             # Add to required if no default value
             if param.default == inspect.Parameter.empty:
@@ -95,6 +102,9 @@ class ToolRegistry:
                 if non_none_args:
                     return self._get_json_type(non_none_args[0])
                 return "string"
+            elif annotation.__origin__ is list:
+                # Handle List[str], List[int], etc.
+                return "array"
 
         # Handle basic types
         type_mapping = {
@@ -107,6 +117,31 @@ class ToolRegistry:
         }
 
         return type_mapping.get(annotation, "string")
+
+    def _get_array_items_schema(self, annotation: Any) -> Dict[str, Any]:
+        """Generate items schema for array types."""
+        if hasattr(annotation, "__args__") and annotation.__args__:
+            # Handle List[SomeType] - get the type of items
+            item_type = annotation.__args__[0]
+            
+            # Handle nested List types like List[List[float]]
+            if hasattr(item_type, "__origin__") and item_type.__origin__ is list:
+                # For List[List[SomeType]], return array of arrays
+                if item_type.__args__:
+                    inner_type = self._get_json_type(item_type.__args__[0])
+                    return {
+                        "type": "array",
+                        "items": {"type": inner_type}
+                    }
+                else:
+                    return {"type": "array", "items": {"type": "string"}}
+            else:
+                # For List[SomeType], return the type of items
+                inner_type = self._get_json_type(item_type)
+                return {"type": inner_type}
+        else:
+            # Fallback for generic List
+            return {"type": "string"}
 
     def _get_param_description(self, func: Callable, param_name: str) -> str:
         """Extract parameter description from function docstring."""

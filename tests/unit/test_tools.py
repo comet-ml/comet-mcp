@@ -15,14 +15,12 @@ from comet_mcp.tools import (
     get_experiment_details,
     list_projects,
     get_session_info,
-    search_experiments,
     list_project_experiments,
     count_project_experiments,
     ExperimentInfo,
     ExperimentDetails,
     ProjectInfo,
     SessionInfo,
-    SearchResults,
 )
 from comet_mcp.session import session_context
 
@@ -46,15 +44,15 @@ class TestListExperiments:
         mock_experiment1 = Mock()
         mock_experiment1.id = "exp1"
         mock_experiment1.name = "Test Experiment 1"
-        mock_experiment1.state = "completed"
-        mock_experiment1.created_at = datetime(2024, 1, 1, 12, 0, 0)
+        mock_experiment1.get_state.return_value = "completed"
+        mock_experiment1.start_server_timestamp = datetime(2024, 1, 1, 12, 0, 0)
         mock_experiment1.description = "Test description 1"
 
         mock_experiment2 = Mock()
         mock_experiment2.id = "exp2"
         mock_experiment2.name = "Test Experiment 2"
-        mock_experiment2.state = "running"
-        mock_experiment2.created_at = datetime(2024, 1, 2, 12, 0, 0)
+        mock_experiment2.get_state.return_value = "running"
+        mock_experiment2.start_server_timestamp = datetime(2024, 1, 2, 12, 0, 0)
         mock_experiment2.description = None
 
         mock_api.get_experiments.return_value = [mock_experiment1, mock_experiment2]
@@ -141,29 +139,26 @@ class TestGetExperimentDetails:
         mock_experiment = Mock()
         mock_experiment.id = "exp123"
         mock_experiment.name = "Detailed Experiment"
-        mock_experiment.state = "completed"
-        mock_experiment.created_at = datetime(2024, 1, 1, 12, 0, 0)
-        mock_experiment.updated_at = datetime(2024, 1, 2, 12, 0, 0)
+        mock_experiment.get_state.return_value = "completed"
+        mock_experiment.start_server_timestamp = datetime(2024, 1, 1, 12, 0, 0)
+        mock_experiment.end_server_timestamp = datetime(2024, 1, 2, 12, 0, 0)
+        mock_experiment.url = "https://example.com/exp123"
         mock_experiment.description = "Detailed description"
 
-        # Mock metrics
-        mock_metric1 = Mock()
-        mock_metric1.name = "accuracy"
-        mock_metric1.value = 0.95
-        mock_metric2 = Mock()
-        mock_metric2.name = "loss"
-        mock_metric2.value = 0.05
+        # Mock metrics summary
+        mock_metrics_summary = [
+            {"name": "accuracy", "valueCurrent": 0.95},
+            {"name": "loss", "valueCurrent": 0.05}
+        ]
 
-        # Mock parameters
-        mock_param1 = Mock()
-        mock_param1.name = "learning_rate"
-        mock_param1.value = 0.001
-        mock_param2 = Mock()
-        mock_param2.name = "batch_size"
-        mock_param2.value = 32
+        # Mock parameters summary
+        mock_params_summary = [
+            {"name": "learning_rate", "valueCurrent": 0.001},
+            {"name": "batch_size", "valueCurrent": 32}
+        ]
 
-        mock_experiment.get_metrics.return_value = [mock_metric1, mock_metric2]
-        mock_experiment.get_parameters.return_value = [mock_param1, mock_param2]
+        mock_experiment.get_metrics_summary.return_value = mock_metrics_summary
+        mock_experiment.get_parameters_summary.return_value = mock_params_summary
 
         # Mock API
         mock_api = Mock()
@@ -216,12 +211,13 @@ class TestGetExperimentDetails:
         mock_experiment = Mock()
         mock_experiment.id = "exp123"
         mock_experiment.name = "Simple Experiment"
-        mock_experiment.state = "completed"
-        mock_experiment.created_at = datetime(2024, 1, 1, 12, 0, 0)
-        mock_experiment.updated_at = datetime(2024, 1, 2, 12, 0, 0)
+        mock_experiment.get_state.return_value = "completed"
+        mock_experiment.start_server_timestamp = datetime(2024, 1, 1, 12, 0, 0)
+        mock_experiment.end_server_timestamp = datetime(2024, 1, 2, 12, 0, 0)
+        mock_experiment.url = "https://example.com/exp123"
         mock_experiment.description = None
-        mock_experiment.get_metrics.return_value = None
-        mock_experiment.get_parameters.return_value = None
+        mock_experiment.get_metrics_summary.return_value = None
+        mock_experiment.get_parameters_summary.return_value = None
 
         mock_api = Mock()
         mock_api.get_experiment_by_key.return_value = mock_experiment
@@ -462,163 +458,6 @@ class TestGetSessionInfo:
         assert result["error"] == "Comet ML session is not initialized."
 
 
-class TestSearchExperiments:
-    """Test cases for search_experiments tool."""
-
-    def setup_method(self):
-        """Set up test fixtures before each test method."""
-        session_context.reset()
-        session_context.initialize()
-
-    @patch("comet_mcp.tools.get_comet_api")
-    def test_search_experiments_success(self, mock_get_api):
-        """Test successful search of experiments."""
-        # Mock experiments
-        mock_exp1 = Mock()
-        mock_exp1.id = "exp1"
-        mock_exp1.name = "Machine Learning Model"
-        mock_exp1.state = "completed"
-        mock_exp1.created_at = datetime(2024, 1, 1, 12, 0, 0)
-        mock_exp1.description = "A machine learning experiment"
-
-        mock_exp2 = Mock()
-        mock_exp2.id = "exp2"
-        mock_exp2.name = "Deep Learning Test"
-        mock_exp2.state = "running"
-        mock_exp2.created_at = datetime(2024, 1, 2, 12, 0, 0)
-        mock_exp2.description = "Testing deep learning algorithms"
-
-        mock_exp3 = Mock()
-        mock_exp3.id = "exp3"
-        mock_exp3.name = "Data Analysis"
-        mock_exp3.state = "completed"
-        mock_exp3.created_at = datetime(2024, 1, 3, 12, 0, 0)
-        mock_exp3.description = "Basic data analysis"
-
-        mock_api = Mock()
-        mock_api.get_default_workspace.return_value = "default-workspace"
-        mock_api.get_experiments.return_value = [mock_exp1, mock_exp2, mock_exp3]
-        mock_get_api.return_value.__enter__.return_value = mock_api
-
-        result = search_experiments("machine learning")
-
-        assert isinstance(result, dict)
-        assert result["query"] == "machine learning"
-        assert result["count"] == 1  # Should match only exp1
-        assert isinstance(result["experiments"], list)
-        assert len(result["experiments"]) == 1
-
-        # Verify the match
-        exp1 = result["experiments"][0]
-        assert exp1["id"] == "exp1"
-        assert exp1["name"] == "Machine Learning Model"
-
-    @patch("comet_mcp.tools.get_comet_api")
-    def test_search_experiments_multiple_matches(self, mock_get_api):
-        """Test search when multiple experiments match the query."""
-        # Mock experiments with multiple matches
-        mock_exp1 = Mock()
-        mock_exp1.id = "exp1"
-        mock_exp1.name = "Machine Learning Model"
-        mock_exp1.state = "completed"
-        mock_exp1.created_at = datetime(2024, 1, 1, 12, 0, 0)
-        mock_exp1.description = "A machine learning experiment"
-
-        mock_exp2 = Mock()
-        mock_exp2.id = "exp2"
-        mock_exp2.name = "Deep Learning Test"
-        mock_exp2.state = "running"
-        mock_exp2.created_at = datetime(2024, 1, 2, 12, 0, 0)
-        mock_exp2.description = "Testing machine learning algorithms"
-
-        mock_exp3 = Mock()
-        mock_exp3.id = "exp3"
-        mock_exp3.name = "Data Analysis"
-        mock_exp3.state = "completed"
-        mock_exp3.created_at = datetime(2024, 1, 3, 12, 0, 0)
-        mock_exp3.description = "Basic data analysis"
-
-        mock_api = Mock()
-        mock_api.get_default_workspace.return_value = "default-workspace"
-        mock_api.get_experiments.return_value = [mock_exp1, mock_exp2, mock_exp3]
-        mock_get_api.return_value.__enter__.return_value = mock_api
-
-        result = search_experiments("machine learning")
-
-        assert isinstance(result, dict)
-        assert result["query"] == "machine learning"
-        assert result["count"] == 2  # Should match exp1 and exp2
-        assert isinstance(result["experiments"], list)
-        assert len(result["experiments"]) == 2
-
-        # Verify first match
-        exp1 = result["experiments"][0]
-        assert exp1["id"] == "exp1"
-        assert exp1["name"] == "Machine Learning Model"
-
-        # Verify second match
-        exp2 = result["experiments"][1]
-        assert exp2["id"] == "exp2"
-        assert exp2["name"] == "Deep Learning Test"
-
-    @patch("comet_mcp.tools.get_comet_api")
-    def test_search_experiments_no_matches(self, mock_get_api):
-        """Test search when no experiments match the query."""
-        mock_exp = Mock()
-        mock_exp.id = "exp1"
-        mock_exp.name = "Unrelated Experiment"
-        mock_exp.state = "completed"
-        mock_exp.created_at = datetime(2024, 1, 1, 12, 0, 0)
-        mock_exp.description = "This has nothing to do with the query"
-
-        mock_api = Mock()
-        mock_api.get_default_workspace.return_value = "default-workspace"
-        mock_api.get_experiments.return_value = [mock_exp]
-        mock_get_api.return_value.__enter__.return_value = mock_api
-
-        result = search_experiments("machine learning")
-
-        assert result["query"] == "machine learning"
-        assert result["count"] == 0
-        assert result["experiments"] == []
-
-    @patch("comet_mcp.tools.get_comet_api")
-    def test_search_experiments_empty_experiments(self, mock_get_api):
-        """Test search when no experiments exist."""
-        mock_api = Mock()
-        mock_api.get_default_workspace.return_value = "default-workspace"
-        mock_api.get_experiments.return_value = []
-        mock_get_api.return_value.__enter__.return_value = mock_api
-
-        result = search_experiments("any query")
-
-        assert result["query"] == "any query"
-        assert result["count"] == 0
-        assert result["experiments"] == []
-
-    @patch("comet_mcp.tools.get_comet_api")
-    def test_search_experiments_with_limit(self, mock_get_api):
-        """Test search with result limit."""
-        # Create many matching experiments
-        experiments = []
-        for i in range(15):
-            mock_exp = Mock()
-            mock_exp.id = f"exp{i}"
-            mock_exp.name = f"ML Experiment {i}"
-            mock_exp.state = "completed"
-            mock_exp.created_at = datetime(2024, 1, 1, 12, 0, 0)
-            mock_exp.description = f"Machine learning experiment {i}"
-            experiments.append(mock_exp)
-
-        mock_api = Mock()
-        mock_api.get_default_workspace.return_value = "default-workspace"
-        mock_api.get_experiments.return_value = experiments
-        mock_get_api.return_value.__enter__.return_value = mock_api
-
-        result = search_experiments("ML")
-
-        assert result["count"] == 15  # Should return all matching experiments
-        assert len(result["experiments"]) == 15
 
 
 class TestStructuredDataTypes:
@@ -637,8 +476,8 @@ class TestStructuredDataTypes:
         mock_experiment = Mock()
         mock_experiment.id = "exp1"
         mock_experiment.name = "Test"
-        mock_experiment.state = "completed"
-        mock_experiment.created_at = datetime(2024, 1, 1, 12, 0, 0)
+        mock_experiment.get_state.return_value = "completed"
+        mock_experiment.start_server_timestamp = datetime(2024, 1, 1, 12, 0, 0)
         mock_experiment.description = "Test description"
         mock_api.get_experiments.return_value = [mock_experiment]
         mock_get_api.return_value.__enter__.return_value = mock_api
@@ -670,12 +509,13 @@ class TestStructuredDataTypes:
         mock_experiment = Mock()
         mock_experiment.id = "exp1"
         mock_experiment.name = "Test"
-        mock_experiment.state = "completed"
-        mock_experiment.created_at = datetime(2024, 1, 1, 12, 0, 0)
-        mock_experiment.updated_at = datetime(2024, 1, 2, 12, 0, 0)
+        mock_experiment.get_state.return_value = "completed"
+        mock_experiment.start_server_timestamp = datetime(2024, 1, 1, 12, 0, 0)
+        mock_experiment.end_server_timestamp = datetime(2024, 1, 2, 12, 0, 0)
+        mock_experiment.url = "https://example.com/exp1"
         mock_experiment.description = "Test description"
-        mock_experiment.get_metrics.return_value = []
-        mock_experiment.get_parameters.return_value = []
+        mock_experiment.get_metrics_summary.return_value = []
+        mock_experiment.get_parameters_summary.return_value = []
         mock_api.get_experiment_by_key.return_value = mock_experiment
         mock_get_api.return_value.__enter__.return_value = mock_api
 
@@ -755,25 +595,6 @@ class TestStructuredDataTypes:
         assert result["user"] is None or isinstance(result["user"], str)
         assert result["error"] is None or isinstance(result["error"], str)
 
-    @patch("comet_mcp.tools.get_comet_api")
-    def test_search_results_structure(self, mock_get_api):
-        """Test that search_experiments returns proper SearchResults structure."""
-        mock_api = Mock()
-        mock_api.get_default_workspace.return_value = "default-workspace"
-        mock_api.get_experiments.return_value = []
-        mock_get_api.return_value.__enter__.return_value = mock_api
-
-        result = search_experiments("test query")
-
-        # Verify all required fields exist
-        required_fields = ["query", "count", "experiments"]
-        for field in required_fields:
-            assert field in result
-
-        # Verify field types
-        assert isinstance(result["query"], str)
-        assert isinstance(result["count"], int)
-        assert isinstance(result["experiments"], list)
 
 
 class TestListProjectExperiments:
@@ -793,21 +614,21 @@ class TestListProjectExperiments:
         mock_experiment1 = Mock()
         mock_experiment1.id = "exp1"
         mock_experiment1.name = "Project Experiment 1"
-        mock_experiment1.state = "completed"
-        mock_experiment1.created_at = datetime(2024, 1, 1, 12, 0, 0)
+        mock_experiment1.get_state.return_value = "completed"
+        mock_experiment1.start_server_timestamp = datetime(2024, 1, 1, 12, 0, 0)
         mock_experiment1.description = "First project experiment"
 
         mock_experiment2 = Mock()
         mock_experiment2.id = "exp2"
         mock_experiment2.name = "Project Experiment 2"
-        mock_experiment2.state = "running"
-        mock_experiment2.created_at = datetime(2024, 1, 2, 12, 0, 0)
+        mock_experiment2.get_state.return_value = "running"
+        mock_experiment2.start_server_timestamp = datetime(2024, 1, 2, 12, 0, 0)
         mock_experiment2.description = "Second project experiment"
 
         mock_api.get_experiments.return_value = [mock_experiment1, mock_experiment2]
         mock_get_api.return_value.__enter__.return_value = mock_api
 
-        result = list_project_experiments("test-project")
+        result = list_project_experiments("smoke-test")
 
         assert isinstance(result, list)
         assert len(result) == 2
@@ -829,7 +650,7 @@ class TestListProjectExperiments:
         assert exp2["description"] == "Second project experiment"
 
         # Verify API was called correctly
-        mock_api.get_experiments.assert_called_once_with("default-workspace", project_name="test-project")
+        mock_api.get_experiments.assert_called_once_with("default-workspace", project_name="smoke-test")
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_list_project_experiments_with_workspace(self, mock_get_api):
@@ -838,11 +659,11 @@ class TestListProjectExperiments:
         mock_api.get_experiments.return_value = []
         mock_get_api.return_value.__enter__.return_value = mock_api
 
-        result = list_project_experiments("test-project", workspace="test-workspace")
+        result = list_project_experiments("smoke-test", workspace="test-workspace")
 
         assert isinstance(result, list)
         assert len(result) == 0
-        mock_api.get_experiments.assert_called_once_with("test-workspace", project_name="test-project")
+        mock_api.get_experiments.assert_called_once_with("test-workspace", project_name="smoke-test")
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_list_project_experiments_empty_result(self, mock_get_api):
@@ -863,9 +684,9 @@ class TestListProjectExperiments:
         mock_get_api.side_effect = Exception("API connection failed")
 
         with pytest.raises(Exception) as exc_info:
-            list_project_experiments("test-project")
+            list_project_experiments("smoke-test")
 
-        assert "Error listing experiments for project 'test-project'" in str(exc_info.value)
+        assert "Error listing experiments for project 'smoke-test'" in str(exc_info.value)
         assert "API connection failed" in str(exc_info.value)
 
 
@@ -900,17 +721,17 @@ class TestCountProjectExperiments:
         mock_api.get_experiments.return_value = [mock_experiment1, mock_experiment2]
         mock_get_api.return_value.__enter__.return_value = mock_api
 
-        result = count_project_experiments("test-project")
+        result = count_project_experiments("smoke-test")
 
         assert isinstance(result, dict)
-        assert result["project_name"] == "test-project"
+        assert result["project_name"] == "smoke-test"
         assert result["workspace"] == "default-workspace"
         assert result["experiment_count"] == 2
         assert isinstance(result["experiments"], list)
         assert len(result["experiments"]) == 2
 
         # Verify API was called correctly
-        mock_api.get_experiments.assert_called_once_with("default-workspace", project_name="test-project")
+        mock_api.get_experiments.assert_called_once_with("default-workspace", project_name="smoke-test")
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_count_project_experiments_with_workspace(self, mock_get_api):
@@ -919,14 +740,14 @@ class TestCountProjectExperiments:
         mock_api.get_experiments.return_value = []
         mock_get_api.return_value.__enter__.return_value = mock_api
 
-        result = count_project_experiments("test-project", workspace="test-workspace")
+        result = count_project_experiments("smoke-test", workspace="test-workspace")
 
         assert isinstance(result, dict)
-        assert result["project_name"] == "test-project"
+        assert result["project_name"] == "smoke-test"
         assert result["workspace"] == "test-workspace"
         assert result["experiment_count"] == 0
         assert result["experiments"] == []
-        mock_api.get_experiments.assert_called_once_with("test-workspace", project_name="test-project")
+        mock_api.get_experiments.assert_called_once_with("test-workspace", project_name="smoke-test")
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_count_project_experiments_empty_project(self, mock_get_api):
@@ -950,9 +771,9 @@ class TestCountProjectExperiments:
         mock_get_api.side_effect = Exception("API connection failed")
 
         with pytest.raises(Exception) as exc_info:
-            count_project_experiments("test-project")
+            count_project_experiments("smoke-test")
 
-        assert "Error counting experiments for project 'test-project'" in str(exc_info.value)
+        assert "Error counting experiments for project 'smoke-test'" in str(exc_info.value)
         assert "API connection failed" in str(exc_info.value)
 
 
@@ -980,7 +801,7 @@ class TestUpdatedListExperiments:
         mock_api.get_experiments.return_value = [mock_experiment]
         mock_get_api.return_value.__enter__.return_value = mock_api
 
-        result = list_experiments(project_name="test-project")
+        result = list_experiments(project_name="smoke-test")
 
         assert isinstance(result, list)
         assert len(result) == 1
@@ -988,7 +809,7 @@ class TestUpdatedListExperiments:
         assert result[0]["name"] == "Filtered Experiment"
 
         # Verify API was called with project filter
-        mock_api.get_experiments.assert_called_once_with("default-workspace", project_name="test-project")
+        mock_api.get_experiments.assert_called_once_with("default-workspace", project_name="smoke-test")
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_list_experiments_with_workspace_and_project(self, mock_get_api):
@@ -997,62 +818,13 @@ class TestUpdatedListExperiments:
         mock_api.get_experiments.return_value = []
         mock_get_api.return_value.__enter__.return_value = mock_api
 
-        result = list_experiments(workspace="test-workspace", project_name="test-project")
+        result = list_experiments(workspace="test-workspace", project_name="smoke-test")
 
         assert isinstance(result, list)
         assert len(result) == 0
-        mock_api.get_experiments.assert_called_once_with("test-workspace", project_name="test-project")
+        mock_api.get_experiments.assert_called_once_with("test-workspace", project_name="smoke-test")
 
 
-class TestUpdatedSearchExperiments:
-    """Test cases for updated search_experiments tool with project filtering."""
-
-    def setup_method(self):
-        """Set up test fixtures before each test method."""
-        session_context.reset()
-        session_context.initialize()
-
-    @patch("comet_mcp.tools.get_comet_api")
-    def test_search_experiments_with_project_filter(self, mock_get_api):
-        """Test searching experiments with project filter."""
-        mock_api = Mock()
-        mock_api.get_default_workspace.return_value = "default-workspace"
-        
-        mock_experiment = Mock()
-        mock_experiment.id = "exp1"
-        mock_experiment.name = "Machine Learning Model"
-        mock_experiment.state = "completed"
-        mock_experiment.created_at = datetime(2024, 1, 1, 12, 0, 0)
-        mock_experiment.description = "A machine learning experiment"
-
-        mock_api.get_experiments.return_value = [mock_experiment]
-        mock_get_api.return_value.__enter__.return_value = mock_api
-
-        result = search_experiments("machine learning", project_name="test-project")
-
-        assert isinstance(result, dict)
-        assert result["query"] == "machine learning"
-        assert result["count"] == 1
-        assert len(result["experiments"]) == 1
-        assert result["experiments"][0]["id"] == "exp1"
-
-        # Verify API was called with project filter
-        mock_api.get_experiments.assert_called_once_with("default-workspace", project_name="test-project")
-
-    @patch("comet_mcp.tools.get_comet_api")
-    def test_search_experiments_with_workspace_and_project(self, mock_get_api):
-        """Test searching experiments with both workspace and project filters."""
-        mock_api = Mock()
-        mock_api.get_experiments.return_value = []
-        mock_get_api.return_value.__enter__.return_value = mock_api
-
-        result = search_experiments("test query", workspace="test-workspace", project_name="test-project")
-
-        assert isinstance(result, dict)
-        assert result["query"] == "test query"
-        assert result["count"] == 0
-        assert result["experiments"] == []
-        mock_api.get_experiments.assert_called_once_with("test-workspace", project_name="test-project")
 
 
 if __name__ == "__main__":
