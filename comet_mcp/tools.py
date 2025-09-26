@@ -218,7 +218,7 @@ def get_plot_of_xy_data(data: List[List[float]], title: str = "XY Data Plot", me
 @tool
 def get_default_workspace() -> str:
     """
-    Get the default project for the current workspace.
+    Get the default workspace name for this user.
     """
     with get_comet_api() as api:
         return api.get_default_workspace()
@@ -237,7 +237,7 @@ def get_experiment_code(experiment_id: str) -> Dict[str, str]:
         return {"code": experiment.get_code()}
 
 @tool
-def get_experiment_metric_data(experiment_ids: List[str], metric_names: List[str], x_axis: str) -> Dict[str, Any]:
+def get_experiment_metric_data(experiment_ids: List[str], metric_names: List[str], x_axis: Optional[str] = None) -> Dict[str, Any]:
     """
     Get multiple metric data for specific experiments. Use this tool to 
     get metrics for multiple experiments at once. You must pass in at
@@ -247,7 +247,8 @@ def get_experiment_metric_data(experiment_ids: List[str], metric_names: List[str
     Args:
         experiment_ids: List of experiment IDs to retrieve metrics for
         metric_names: List of metric names to retrieve
-        x_axis: The name of the x-axis to retrieve. Must be: "steps", "epochs", "timestamps", or "durations"
+        x_axis: The name of the x-axis to retrieve (optional). Must be: "steps", "epochs", "timestamps", or "durations".
+                If not provided, will try in order of priority: steps, epochs, timestamps, durations
         
     Returns:
         Dictionary containing experiment_ids, x_axis, and metrics data with (x, y) coordinate pairs for plotting
@@ -264,7 +265,7 @@ def get_experiment_metric_data(experiment_ids: List[str], metric_names: List[str
                     continue  # Skip experiments not found in data
                 
                 experiment_data = data[experiment_id]
-                if experiment_id not in experiment_data:
+                if not experiment_data or experiment_data.get('empty', True):
                     continue  # Skip experiments without data
                 
                 experiment_metrics = {}
@@ -272,25 +273,44 @@ def get_experiment_metric_data(experiment_ids: List[str], metric_names: List[str
                 
                 # Process each metric for this experiment
                 for metric_name in metric_names:
-                    if metric_name not in experiment_data[experiment_id]["metrics"]:
+                    # Find the metric in the metrics list
+                    metric_data = None
+                    for metric in experiment_data.get("metrics", []):
+                        if metric.get("metricName") == metric_name:
+                            metric_data = metric
+                            break
+                    
+                    if not metric_data:
                         continue  # Skip metrics not found for this experiment
                     
-                    metrics = experiment_data[experiment_id]["metrics"][metric_name]
-                    values = metrics["values"]
+                    values = metric_data["values"]
                     
-                    # Handle x_axis selection - try in order: steps, epochs, timestamps, durations
-                    current_x_axis = x_axis
-                    if current_x_axis not in metrics:
-                        # Try to find an available x_axis in the order specified in docstring
-                        for fallback_axis in ["steps", "epochs", "timestamps", "durations"]:
-                            if fallback_axis in metrics:
-                                current_x_axis = fallback_axis
+                    # Handle x_axis selection with priority ordering
+                    if x_axis is not None:
+                        # Use provided x_axis if available
+                        current_x_axis = x_axis
+                        if current_x_axis not in metric_data or metric_data[current_x_axis] is None:
+                            # Try to find an available x_axis in the order specified in docstring
+                            for fallback_axis in ["steps", "epochs", "timestamps", "durations"]:
+                                if fallback_axis in metric_data and metric_data[fallback_axis] is not None:
+                                    current_x_axis = fallback_axis
+                                    break
+                            else:
+                                # If no standard x_axis is found, skip this metric
+                                continue
+                    else:
+                        # No x_axis provided, try in order of priority: steps, epochs, timestamps, durations
+                        current_x_axis = None
+                        for priority_axis in ["steps", "epochs", "timestamps", "durations"]:
+                            if priority_axis in metric_data and metric_data[priority_axis] is not None:
+                                current_x_axis = priority_axis
                                 break
-                        else:
+                        
+                        if current_x_axis is None:
                             # If no standard x_axis is found, skip this metric
                             continue
                     
-                    x_axis_values = metrics[current_x_axis]
+                    x_axis_values = metric_data[current_x_axis]
                     
                     # Convert timestamps to datetime objects if needed
                     if current_x_axis == "timestamps":
@@ -310,7 +330,7 @@ def get_experiment_metric_data(experiment_ids: List[str], metric_names: List[str
             
             return {
                 "experiment_ids": experiment_ids,
-                "x_axis": x_axis,
+                "x_axis": x_axis or "auto-selected",
                 "experiments": results
             }
             
@@ -372,8 +392,9 @@ def get_experiment_details(experiment_id: str) -> ExperimentDetails:
 @tool
 def list_projects(workspace: Optional[str] = None) -> List[ProjectInfo]:
     """
-    List projects in the Comet ML workspace. Only use this tool
-    if you need a list of all Projects.
+    List the project names in a Comet ML workspace. Only use this tool
+    if you need a list of all project names. Do not use to verify a
+    project name unless you get an error that the project does not exist.
 
     Args:
         workspace: Workspace name (optional, uses default workspace if not provided)

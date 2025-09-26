@@ -432,13 +432,13 @@ class MCPChatbot:
                 try:
                     content_data = result.content
                     # Check if this is an ImageResult
-                    if (isinstance(content_data, dict) and 
-                        content_data.get("type") == "image_result" and
-                        "image_base64" in content_data):
-                        # Handle image result specially
-                        return self._handle_image_result(content_data, actual_tool_name)
-                    else:
-                        content_str = json.dumps(content_data)
+                    #if (isinstance(content_data, dict) and 
+                    #    content_data.get("type") == "image_result" and
+                    #    "image_base64" in content_data):
+                    #    # Handle image result specially
+                    #    return self._handle_image_result(content_data, actual_tool_name)
+                    #else:
+                    content_str = json.dumps(content_data)
                 except Exception:
                     content_str = str(result.content)
             else:
@@ -1069,7 +1069,7 @@ async def main():
     configure_opik(args.opik)
 
     model = "openai/gpt-4o-mini"
-    model_kwargs = {"temperature": 0.2, "max_tokens": 700}
+    model_kwargs = {"temperature": 0.2}
 
     system_prompt = """
 You are a helpful AI system for answering questions of Comet ML's

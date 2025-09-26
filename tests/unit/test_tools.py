@@ -17,6 +17,7 @@ from comet_mcp.tools import (
     get_session_info,
     list_project_experiments,
     count_project_experiments,
+    get_experiment_metric_data,
     ExperimentInfo,
     ExperimentDetails,
     ProjectInfo,
