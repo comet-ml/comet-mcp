@@ -8,12 +8,6 @@ version = "1.0.0"
 description = "MCP server for Comet ML API integration"
 readme = "README.md"
 license = {file = "LICENSE"}
-authors = [
-    {name = "Comet ML Team", email = "support@comet.ml"}
-]
-maintainers = [
-    {name = "Comet ML Team", email = "support@comet.ml"}
-]
 keywords = ["comet", "ml", "mcp", "model-context-protocol", "machine-learning", "experiment-tracking"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -34,28 +28,16 @@ requires-python = ">=3.8"
 dependencies = [
     "mcp>=1.0.0",
     "comet-ml>=3.0.0",
-    "pydantic>=2.0.0",
-    "python-dotenv>=1.0.0",
-    "httpx>=0.25.0",
-    "typing-extensions>=4.0.0",
-    "rich>=13.0.0",
-    "litellm>=1.0.0",
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.20.0",
+    "matplotlib>=3.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
-    "black>=23.0.0",
-    "isort>=5.12.0",
-    "flake8>=6.0.0",
-    "mypy>=1.0.0",
-]
-test = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
+    "requests>=2.25.0",
 ]
 
 [project.urls]
@@ -65,8 +47,7 @@ Documentation = "https://github.com/comet-ml/comet-mcp#readme"
 "Bug Tracker" = "https://github.com/comet-ml/comet-mcp/issues"
 
 [project.scripts]
-comet-mcp-server = "comet_mcp.server:main_sync"
-comet-mcp-chatbot = "comet_mcp.chatbot:main_sync"
+comet-mcp = "comet_mcp.server:main_sync"
 
 [tool.setuptools.packages.find]
 where = ["."]

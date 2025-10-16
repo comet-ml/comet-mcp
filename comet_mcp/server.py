@@ -17,7 +17,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
 # Import our tools module and registry
-from . import tools  # This ensures tools are registered
+from . import tool_loader  # This ensures tools are registered
 from .utils import registry
 from .session import initialize_session
 
@@ -27,7 +27,7 @@ from fastapi.responses import StreamingResponse
 import uvicorn
 
 # Create the server
-server = Server("comet-mcp-server")
+server = Server("comet-mcp")
 
 # Global variable to track server state for clean shutdown
 _server_task = None

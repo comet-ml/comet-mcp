@@ -9,8 +9,8 @@ from datetime import datetime
 import base64
 import io
 import matplotlib.pyplot as plt
-from .utils import tool, format_datetime
-from .session import get_comet_api, get_session_context
+from comet_mcp.utils import format_datetime
+from comet_mcp.session import get_comet_api, get_session_context
 
 
 class ExperimentInfo(TypedDict):
@@ -33,8 +33,8 @@ class ExperimentDetails(TypedDict):
     created_at: str
     updated_at: str
     description: Optional[str]
-    metric_names: List[str]
-    parameter_names: List[str]
+    metrics: List[Dict[str, Any]]
+    parameters: List[Dict[str, Any]]
 
 
 class ProjectInfo(TypedDict):
@@ -71,22 +71,30 @@ class ImageResult(TypedDict):
     image_base64: str
 
 
-@tool
 def list_experiments(
-    workspace: str, project_name: str
+    workspace: Optional[str] = None, project_name: Optional[str] = None
 ) -> List[ExperimentInfo]:
     """
     List recent experiments from Comet ML. Typically, don't show the
     user the experiment_id unless they ask to see it.
 
     Args:
-        workspace: Workspace name (required)
-        project_name: Project name to filter experiments (required)
+        workspace: Workspace name (optional, uses default if not provided)
+        project_name: Project name to filter experiments (optional)
     """
     try:
         with get_comet_api() as api:
+            # Determine target workspace
+            if workspace:
+                target_workspace = workspace
+            else:
+                target_workspace = api.get_default_workspace()
+            
             # Get experiments for the specified workspace and project
-            experiments = api.get_experiments(workspace, project_name=project_name)
+            if project_name:
+                experiments = api.get_experiments(target_workspace, project_name=project_name)
+            else:
+                experiments = api.get_experiments(target_workspace)
 
             if not experiments:
                 return []
@@ -107,7 +115,6 @@ def list_experiments(
     except Exception as e:
         raise Exception(f"Error listing experiments: {e}")
 
-@tool
 def get_plot_of_xy_data(data: List[List[float]], title: str = "XY Data Plot", metric_data: Optional[Dict[str, Any]] = None) -> ImageResult:
     """
     Create a plot of a list of [x, y] data points using matplotlib.
@@ -215,7 +222,6 @@ def get_plot_of_xy_data(data: List[List[float]], title: str = "XY Data Plot", me
         image_base64=image_base64
     )
     
-@tool
 def get_default_workspace() -> str:
     """
     Get the default workspace name for this user.
@@ -224,7 +230,6 @@ def get_default_workspace() -> str:
         return api.get_default_workspace()
 
 
-@tool
 def get_experiment_code(experiment_id: str) -> Dict[str, str]:
     """
     Get the code for a specific experiment.
@@ -236,7 +241,6 @@ def get_experiment_code(experiment_id: str) -> Dict[str, str]:
         experiment = api.get_experiment_by_key(experiment_id)
         return {"code": experiment.get_code()}
 
-@tool
 def get_experiment_metric_data(experiment_ids: List[str], metric_names: List[str], x_axis: Optional[str] = None) -> Dict[str, Any]:
     """
     Get multiple metric data for specific experiments. Use this tool to 
@@ -338,7 +342,6 @@ def get_experiment_metric_data(experiment_ids: List[str], metric_names: List[str
             raise ValueError(f"Failed to get metrics {metric_names} for experiments {experiment_ids}: {e}")
 
 
-@tool
 def get_experiment_details(experiment_id: str) -> ExperimentDetails:
     """
     Get detailed information about a specific experiment, including
@@ -359,18 +362,20 @@ def get_experiment_details(experiment_id: str) -> ExperimentDetails:
             metrics_list = []
             if metrics:
                 for metric in metrics:
-                    metrics_list.append(
-                        metric["name"]
-                    )
+                    metrics_list.append({
+                        "name": metric["name"],
+                        "value": metric.get("valueCurrent", 0)
+                    })
 
             # Get parameters
             params = experiment.get_parameters_summary()
             params_list = []
             if params:
                 for param in params:
-                    params_list.append(
-                        param["name"]
-                    )
+                    params_list.append({
+                        "name": param["name"],
+                        "value": param.get("valueCurrent", "")
+                    })
 
             return ExperimentDetails(
                 id=experiment.id,
@@ -382,14 +387,13 @@ def get_experiment_details(experiment_id: str) -> ExperimentDetails:
                     experiment.end_server_timestamp or experiment.start_server_timestamp
                 ),
                 description=getattr(experiment, "description", None),
-                metric_names=metrics_list,
-                parameter_names=params_list,
+                metrics=metrics_list,
+                parameters=params_list,
             )
     except Exception as e:
         raise Exception(f"Error getting experiment details for '{experiment_id}': {e}")
 
 
-@tool
 def list_projects(workspace: Optional[str] = None) -> List[ProjectInfo]:
     """
     List the project names in a Comet ML workspace. Only use this tool
@@ -430,7 +434,6 @@ def list_projects(workspace: Optional[str] = None) -> List[ProjectInfo]:
         return result
 
 
-@tool
 def get_session_info() -> SessionInfo:
     """
     Get information about the current Comet ML session.
@@ -475,7 +478,6 @@ def get_session_info() -> SessionInfo:
         )
 
 
-@tool
 def list_project_experiments(
     project_name: str, workspace: Optional[str] = None
 ) -> List[ExperimentInfo]:
@@ -517,7 +519,6 @@ def list_project_experiments(
         raise Exception(f"Error listing experiments for project '{project_name}': {e}")
 
 
-@tool
 def count_project_experiments(
     project_name: str, workspace: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -555,3 +556,5 @@ def count_project_experiments(
             }
     except Exception as e:
         raise Exception(f"Error counting experiments for project '{project_name}': {e}")
+
+

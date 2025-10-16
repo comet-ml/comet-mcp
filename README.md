@@ -1,17 +1,15 @@
 # Comet ML MCP Server
 
-A comprehensive Model Context Protocol (MCP) server that provides tools for interacting with Comet ML API. This server enables seamless integration with Comet ML's experiment tracking platform through a standardized protocol, supporting both standalone server usage and interactive chatbot functionality.
+A comprehensive Model Context Protocol (MCP) server that provides tools for interacting with Comet ML API. This server enables seamless integration with Comet ML's experiment tracking platform through a standardized protocol.
 
 ## Features
 
 - **🔧 MCP Server**: Full Model Context Protocol implementation for tool integration
-- **🤖 Interactive Chatbot**: AI-powered chatbot with Rich formatting and tool calling
 - **📊 Experiment Management**: List, search, and analyze experiments with detailed metrics
 - **📁 Project Management**: Organize and explore projects across workspaces
 - **🔍 Advanced Search**: Search experiments by name, description, and project
 - **📈 Session Management**: Singleton `comet_ml.API()` instance with robust error handling
-- **🧪 Comprehensive Testing**: Unit tests and end-to-end integration tests
-- **⚡ Rich UI**: Beautiful terminal interface with markdown rendering
+- **🧪 Comprehensive Testing**: Unit tests for all functionality
 
 ## Installation
 
@@ -34,11 +32,6 @@ pip install -e .
 pip install -e ".[dev]"
 ```
 
-### Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
 
 ## Configuration
 
@@ -59,10 +52,12 @@ export COMET_WORKSPACE=your_workspace_name
 - **`list_experiments(workspace, project_name)`** - List recent experiments with optional filtering
 - **`get_experiment_details(experiment_id)`** - Get comprehensive experiment information including metrics and parameters
 - **`get_experiment_code(experiment_id)`** - Retrieve source code from experiments
+- **`get_experiment_metric_data(experiment_ids, metric_names, x_axis)`** - Get metric data for multiple experiments with plotting support
+- **`get_plot_of_xy_data(data, title, metric_data)`** - Create matplotlib plots from data points or metric data
+- **`get_default_workspace()`** - Get the default workspace name for the current user
 - **`list_projects(workspace)`** - List all projects in a workspace
 - **`list_project_experiments(project_name, workspace)`** - List experiments within a specific project
 - **`count_project_experiments(project_name, workspace)`** - Count and analyze experiments in a project
-- **`search_experiments(query, workspace, project_name)`** - Search experiments by name/description with optional filtering
 - **`get_session_info()`** - Get current session status and connection information
 
 ### Tool Features
@@ -80,7 +75,7 @@ Run the server to provide tools to MCP clients:
 
 ```bash
 # Start the MCP server
-comet-mcp-server
+comet-mcp
 ```
 
 The server will:
@@ -88,41 +83,7 @@ The server will:
 - Register all available tools
 - Listen for MCP client connections via stdio
 
-### 2. Interactive Chatbot Mode
-
-Run the interactive chatbot for direct interaction:
-
-```bash
-# Start the chatbot
-comet-mcp-chatbot
-```
-
-The chatbot provides:
-- **Rich Terminal UI**: Beautiful markdown rendering and formatting
-- **AI-Powered Responses**: Uses LiteLLM for intelligent tool calling
-- **Conversation History**: Maintains context across interactions
-- **Multi-Server Support**: Can connect to multiple MCP servers
-
-#### Chatbot Commands
-
-- `quit` or `exit` - Exit the chatbot
-- `/clear` - Clear conversation history
-- Ask natural language questions about your Comet ML data
-
-#### Example Chatbot Interactions
-
-```
-You: What experiments do I have in my workspace?
-Bot: I'll check your experiments for you...
-
-You: Show me details for experiment abc123
-Bot: Here are the details for that experiment...
-
-You: How many experiments are in my "ml-models" project?
-Bot: Let me count the experiments in that project...
-```
-
-### 3. Configuration File
+### 2. Configuration File
 
 Create a `config.json` file for custom server configurations:
 
@@ -132,7 +93,7 @@ Create a `config.json` file for custom server configurations:
     {
       "name": "comet-mcp",
       "description": "Comet ML MCP server for experiment management",
-      "command": "comet-mcp-server",
+      "command": "comet-mcp",
       "env": {
         "COMET_API_KEY": "${COMET_API_KEY}"
       }
@@ -149,15 +110,13 @@ Create a `config.json` file for custom server configurations:
 comet-mcp/
 ├── comet_mcp/           # Main package
 │   ├── server.py        # MCP server implementation
-│   ├── chatbot.py       # Interactive chatbot
 │   ├── tools.py         # Comet ML tools
 │   ├── session.py       # Session management
 │   └── utils.py         # Utilities and tool registry
 ├── tests/               # Test suite
-│   ├── unit/           # Unit tests
-│   └── e2e/            # End-to-end tests
+│   └── unit/           # Unit tests
 ├── pyproject.toml      # Project configuration
-└── requirements.txt    # Dependencies
+└── LICENSE            # License file
 ```
 
 ### Running Tests
@@ -169,8 +128,6 @@ pytest
 # Run unit tests only
 pytest tests/unit/
 
-# Run end-to-end tests (requires valid API key)
-pytest tests/e2e/
 
 # Run with coverage
 pytest --cov=comet_mcp
