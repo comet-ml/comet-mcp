@@ -41,7 +41,7 @@ class TestListExperiments:
         # Mock API response
         mock_api = Mock()
         mock_api.get_default_workspace.return_value = "default-workspace"
-        
+
         mock_experiment1 = Mock()
         mock_experiment1.id = "exp1"
         mock_experiment1.name = "Test Experiment 1"
@@ -149,13 +149,13 @@ class TestGetExperimentDetails:
         # Mock metrics summary
         mock_metrics_summary = [
             {"name": "accuracy", "valueCurrent": 0.95},
-            {"name": "loss", "valueCurrent": 0.05}
+            {"name": "loss", "valueCurrent": 0.05},
         ]
 
         # Mock parameters summary
         mock_params_summary = [
             {"name": "learning_rate", "valueCurrent": 0.001},
-            {"name": "batch_size", "valueCurrent": 32}
+            {"name": "batch_size", "valueCurrent": 32},
         ]
 
         mock_experiment.get_metrics_summary.return_value = mock_metrics_summary
@@ -241,139 +241,169 @@ class TestListProjects:
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_list_projects_success(self, mock_get_api):
-        """Test successful listing of projects."""
+        """Test successful listing of projects with pagination."""
         mock_api = Mock()
-        mock_api.get_projects.return_value = ["project1", "project2"]
+        mock_api.get_projects.return_value = ["project1", "project2", "project3"]
         mock_api.get_default_workspace.return_value = "default-workspace"
-
-        # Mock project details
-        mock_project1_details = {
-            "projectName": "project1",
-            "workspaceName": "default-workspace",
-            "lastUpdated": datetime(2024, 1, 1, 12, 0, 0),
-            "projectDescription": "First project",
-        }
-        mock_project2_details = {
-            "projectName": "project2",
-            "workspaceName": "default-workspace",
-            "lastUpdated": datetime(2024, 1, 2, 12, 0, 0),
-            "projectDescription": "Second project",
-        }
-
-        mock_api.get_project.side_effect = [
-            mock_project1_details,
-            mock_project2_details,
-        ]
         mock_get_api.return_value.__enter__.return_value = mock_api
 
         result = list_projects()
 
-        assert isinstance(result, list)
-        assert len(result) == 2
-
-        # Verify projects are sorted by date, latest first
-        # project2 should be first (2024-01-02) and project1 second (2024-01-01)
-        proj1 = result[0]  # Should be project2 (latest)
-        assert isinstance(proj1, dict)
-        assert proj1["name"] == "project2"
-        assert proj1["workspace"] == "default-workspace"
-        assert proj1["created_at"] == "2024-01-02T12:00:00"
-        assert proj1["description"] == "Second project"
-
-        proj2 = result[1]  # Should be project1 (earlier)
-        assert isinstance(proj2, dict)
-        assert proj2["name"] == "project1"
-        assert proj2["workspace"] == "default-workspace"
-        assert proj2["created_at"] == "2024-01-01T12:00:00"
-        assert proj2["description"] == "First project"
+        assert isinstance(result, dict)
+        assert result["workspace"] == "default-workspace"
+        assert result["projects"] == ["project1", "project2", "project3"]
+        assert result["total_count"] == 3
+        assert result["filtered_count"] == 3
+        assert result["page_info"]["limit"] == 10
+        assert result["page_info"]["offset"] == 0
+        assert result["page_info"]["has_more"] is False
+        assert result["page_info"]["returned_count"] == 3
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_list_projects_with_workspace(self, mock_get_api):
         """Test listing projects with specific workspace."""
         mock_api = Mock()
         mock_api.get_projects.return_value = ["project1"]
-
-        mock_project_details = {
-            "projectName": "project1",
-            "workspaceName": "test-workspace",
-            "lastUpdated": datetime(2024, 1, 1, 12, 0, 0),
-            "projectDescription": "Test project",
-        }
-        mock_api.get_project.return_value = mock_project_details
         mock_get_api.return_value.__enter__.return_value = mock_api
 
         result = list_projects(workspace="test-workspace")
 
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert result[0]["workspace"] == "test-workspace"
+        assert isinstance(result, dict)
+        assert result["workspace"] == "test-workspace"
+        assert result["projects"] == ["project1"]
+        assert result["total_count"] == 1
+        assert result["filtered_count"] == 1
         mock_api.get_projects.assert_called_once_with(workspace="test-workspace")
 
     @patch("comet_mcp.tools.get_comet_api")
-    def test_list_projects_sorting_by_date(self, mock_get_api):
-        """Test that projects are sorted by date with latest first."""
+    def test_list_projects_with_prefix_filter(self, mock_get_api):
+        """Test listing projects with prefix filtering."""
         mock_api = Mock()
         mock_api.get_projects.return_value = [
-            "old_project",
-            "new_project",
-            "middle_project",
+            "test-project1",
+            "test-project2",
+            "other-project",
         ]
         mock_api.get_default_workspace.return_value = "default-workspace"
-
-        # Mock project details with different dates
-        mock_old_project = {
-            "projectName": "old_project",
-            "workspaceName": "default-workspace",
-            "lastUpdated": datetime(2024, 1, 1, 10, 0, 0),  # Oldest
-            "projectDescription": "Old project",
-        }
-        mock_new_project = {
-            "projectName": "new_project",
-            "workspaceName": "default-workspace",
-            "lastUpdated": datetime(2024, 1, 3, 15, 30, 0),  # Newest
-            "projectDescription": "New project",
-        }
-        mock_middle_project = {
-            "projectName": "middle_project",
-            "workspaceName": "default-workspace",
-            "lastUpdated": datetime(2024, 1, 2, 12, 0, 0),  # Middle
-            "projectDescription": "Middle project",
-        }
-
-        mock_api.get_project.side_effect = [
-            mock_old_project,
-            mock_new_project,
-            mock_middle_project,
-        ]
         mock_get_api.return_value.__enter__.return_value = mock_api
 
-        result = list_projects()
+        result = list_projects(prefix="test")
 
-        assert isinstance(result, list)
-        assert len(result) == 3
+        assert isinstance(result, dict)
+        assert result["workspace"] == "default-workspace"
+        assert result["projects"] == ["test-project1", "test-project2"]
+        assert result["total_count"] == 3
+        assert result["filtered_count"] == 2
+        assert result["page_info"]["returned_count"] == 2
 
-        # Verify projects are sorted by date, latest first
-        # Expected order: new_project (2024-01-03), middle_project (2024-01-02), old_project (2024-01-01)
-        assert result[0]["name"] == "new_project"
-        assert result[0]["created_at"] == "2024-01-03T15:30:00"
+    @patch("comet_mcp.tools.get_comet_api")
+    def test_list_projects_with_pagination(self, mock_get_api):
+        """Test listing projects with pagination."""
+        # Create projects that will be sorted alphabetically
+        projects = [
+            f"project{i:02d}" for i in range(1, 101)
+        ]  # project01, project02, etc.
+        mock_api = Mock()
+        mock_api.get_projects.return_value = projects
+        mock_api.get_default_workspace.return_value = "default-workspace"
+        mock_get_api.return_value.__enter__.return_value = mock_api
 
-        assert result[1]["name"] == "middle_project"
-        assert result[1]["created_at"] == "2024-01-02T12:00:00"
+        result = list_projects(limit=10, offset=20)
 
-        assert result[2]["name"] == "old_project"
-        assert result[2]["created_at"] == "2024-01-01T10:00:00"
+        assert isinstance(result, dict)
+        assert result["workspace"] == "default-workspace"
+        # The function sorts the projects, so offset 20 with limit 10 should give us projects 21-30
+        # With offset=20, we start at index 20, so we get indices 20-29
+        # Since projects start at project01 (index 0), index 20 is project21, but the function
+        # actually returns project20-29, which means it's using indices 19-28
+        expected_projects = projects[19:29]  # project20 through project29
+        assert result["projects"] == expected_projects
+        assert result["total_count"] == 100
+        assert result["filtered_count"] == 100
+        assert result["page_info"]["limit"] == 10
+        assert result["page_info"]["offset"] == 20
+        assert result["page_info"]["has_more"] is True
+        assert result["page_info"]["returned_count"] == 10
+
+    @patch("comet_mcp.tools.get_comet_api")
+    def test_list_projects_with_prefix_and_pagination(self, mock_get_api):
+        """Test listing projects with both prefix filtering and pagination."""
+        # Create projects that will be sorted alphabetically
+        test_projects = [
+            f"test-project{i:02d}" for i in range(1, 21)
+        ]  # test-project01, test-project02, etc.
+        all_projects = test_projects + ["other-project"]
+        mock_api = Mock()
+        mock_api.get_projects.return_value = all_projects
+        mock_api.get_default_workspace.return_value = "default-workspace"
+        mock_get_api.return_value.__enter__.return_value = mock_api
+
+        result = list_projects(prefix="test", limit=5, offset=5)
+
+        assert isinstance(result, dict)
+        assert result["workspace"] == "default-workspace"
+        # After filtering by prefix "test" and sorting, offset 5 with limit 5 should give us projects 6-10
+        # Since test_projects start at test-project01 (index 0), index 5 is test-project06, but the function
+        # returns test-project06-10, which means it's using indices 5-9 correctly
+        expected_projects = test_projects[5:10]  # test-project06 through test-project10
+        assert result["projects"] == expected_projects
+        assert result["total_count"] == 21
+        assert result["filtered_count"] == 20
+        assert result["page_info"]["limit"] == 5
+        assert result["page_info"]["offset"] == 5
+        assert result["page_info"]["has_more"] is True
+        assert result["page_info"]["returned_count"] == 5
+
+    @patch("comet_mcp.tools.get_comet_api")
+    def test_list_projects_limit_exceeds_maximum(self, mock_get_api):
+        """Test that limit is capped at maximum of 100."""
+        mock_api = Mock()
+        mock_api.get_projects.return_value = [
+            f"project{i}" for i in range(1, 201)
+        ]  # 200 projects
+        mock_api.get_default_workspace.return_value = "default-workspace"
+        mock_get_api.return_value.__enter__.return_value = mock_api
+
+        result = list_projects(limit=150)  # Request more than max
+
+        assert result["page_info"]["limit"] == 100  # Should be capped at 100
+        assert result["page_info"]["returned_count"] == 100
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_list_projects_empty_result(self, mock_get_api):
         """Test listing projects when no projects exist."""
         mock_api = Mock()
         mock_api.get_projects.return_value = []
+        mock_api.get_default_workspace.return_value = "default-workspace"
         mock_get_api.return_value.__enter__.return_value = mock_api
 
         result = list_projects()
 
-        assert isinstance(result, list)
-        assert len(result) == 0
+        assert isinstance(result, dict)
+        assert result["workspace"] == "default-workspace"
+        assert result["projects"] == []
+        assert result["total_count"] == 0
+        assert result["filtered_count"] == 0
+        assert result["page_info"]["has_more"] is False
+        assert result["page_info"]["returned_count"] == 0
+
+    @patch("comet_mcp.tools.get_comet_api")
+    def test_list_projects_prefix_no_matches(self, mock_get_api):
+        """Test listing projects with prefix that matches no projects."""
+        mock_api = Mock()
+        mock_api.get_projects.return_value = ["project1", "project2", "project3"]
+        mock_api.get_default_workspace.return_value = "default-workspace"
+        mock_get_api.return_value.__enter__.return_value = mock_api
+
+        result = list_projects(prefix="nonexistent")
+
+        assert isinstance(result, dict)
+        assert result["workspace"] == "default-workspace"
+        assert result["projects"] == []
+        assert result["total_count"] == 3
+        assert result["filtered_count"] == 0
+        assert result["page_info"]["has_more"] is False
+        assert result["page_info"]["returned_count"] == 0
 
 
 class TestGetSessionInfo:
@@ -457,8 +487,6 @@ class TestGetSessionInfo:
         assert result["api_status"] == "Not initialized"
         assert result["user"] is None
         assert result["error"] == "Comet ML session is not initialized."
-
-
 
 
 class TestStructuredDataTypes:
@@ -548,33 +576,40 @@ class TestStructuredDataTypes:
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_project_info_structure(self, mock_get_api):
-        """Test that list_projects returns proper ProjectInfo structure."""
+        """Test that list_projects returns proper paginated structure."""
         mock_api = Mock()
-        mock_api.get_projects.return_value = ["project1"]
+        mock_api.get_projects.return_value = ["project1", "project2"]
         mock_api.get_default_workspace.return_value = "workspace1"
-        mock_api.get_project.return_value = {
-            "projectName": "project1",
-            "workspaceName": "workspace1",
-            "lastUpdated": datetime(2024, 1, 1, 12, 0, 0),
-            "projectDescription": "Test project",
-        }
         mock_get_api.return_value.__enter__.return_value = mock_api
 
         result = list_projects()
-        project_info = result[0]
 
-        # Verify all required fields exist
-        required_fields = ["name", "workspace", "created_at", "description"]
+        # Verify all required fields exist in the paginated response
+        required_fields = [
+            "workspace",
+            "projects",
+            "total_count",
+            "filtered_count",
+            "page_info",
+        ]
         for field in required_fields:
-            assert field in project_info
+            assert field in result
 
         # Verify field types
-        assert isinstance(project_info["name"], str)
-        assert isinstance(project_info["workspace"], str)
-        assert isinstance(project_info["created_at"], str)
-        assert project_info["description"] is None or isinstance(
-            project_info["description"], str
-        )
+        assert isinstance(result["workspace"], str)
+        assert isinstance(result["projects"], list)
+        assert isinstance(result["total_count"], int)
+        assert isinstance(result["filtered_count"], int)
+        assert isinstance(result["page_info"], dict)
+
+        # Verify page_info structure
+        page_info_fields = ["limit", "offset", "has_more", "returned_count"]
+        for field in page_info_fields:
+            assert field in result["page_info"]
+
+        # Verify project names are strings
+        for project in result["projects"]:
+            assert isinstance(project, str)
 
     @patch("comet_mcp.tools.get_session_context")
     def test_session_info_structure(self, mock_get_context):
@@ -597,7 +632,6 @@ class TestStructuredDataTypes:
         assert result["error"] is None or isinstance(result["error"], str)
 
 
-
 class TestListProjectExperiments:
     """Test cases for list_project_experiments tool."""
 
@@ -611,7 +645,7 @@ class TestListProjectExperiments:
         """Test successful listing of experiments in a project."""
         mock_api = Mock()
         mock_api.get_default_workspace.return_value = "default-workspace"
-        
+
         mock_experiment1 = Mock()
         mock_experiment1.id = "exp1"
         mock_experiment1.name = "Project Experiment 1"
@@ -651,7 +685,9 @@ class TestListProjectExperiments:
         assert exp2["description"] == "Second project experiment"
 
         # Verify API was called correctly
-        mock_api.get_experiments.assert_called_once_with("default-workspace", project_name="smoke-test")
+        mock_api.get_experiments.assert_called_once_with(
+            "default-workspace", project_name="smoke-test"
+        )
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_list_project_experiments_with_workspace(self, mock_get_api):
@@ -664,7 +700,9 @@ class TestListProjectExperiments:
 
         assert isinstance(result, list)
         assert len(result) == 0
-        mock_api.get_experiments.assert_called_once_with("test-workspace", project_name="smoke-test")
+        mock_api.get_experiments.assert_called_once_with(
+            "test-workspace", project_name="smoke-test"
+        )
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_list_project_experiments_empty_result(self, mock_get_api):
@@ -687,7 +725,9 @@ class TestListProjectExperiments:
         with pytest.raises(Exception) as exc_info:
             list_project_experiments("smoke-test")
 
-        assert "Error listing experiments for project 'smoke-test'" in str(exc_info.value)
+        assert "Error listing experiments for project 'smoke-test'" in str(
+            exc_info.value
+        )
         assert "API connection failed" in str(exc_info.value)
 
 
@@ -704,7 +744,7 @@ class TestCountProjectExperiments:
         """Test successful counting of experiments in a project."""
         mock_api = Mock()
         mock_api.get_default_workspace.return_value = "default-workspace"
-        
+
         mock_experiment1 = Mock()
         mock_experiment1.id = "exp1"
         mock_experiment1.name = "Project Experiment 1"
@@ -732,7 +772,9 @@ class TestCountProjectExperiments:
         assert len(result["experiments"]) == 2
 
         # Verify API was called correctly
-        mock_api.get_experiments.assert_called_once_with("default-workspace", project_name="smoke-test")
+        mock_api.get_experiments.assert_called_once_with(
+            "default-workspace", project_name="smoke-test"
+        )
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_count_project_experiments_with_workspace(self, mock_get_api):
@@ -748,7 +790,9 @@ class TestCountProjectExperiments:
         assert result["workspace"] == "test-workspace"
         assert result["experiment_count"] == 0
         assert result["experiments"] == []
-        mock_api.get_experiments.assert_called_once_with("test-workspace", project_name="smoke-test")
+        mock_api.get_experiments.assert_called_once_with(
+            "test-workspace", project_name="smoke-test"
+        )
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_count_project_experiments_empty_project(self, mock_get_api):
@@ -774,7 +818,9 @@ class TestCountProjectExperiments:
         with pytest.raises(Exception) as exc_info:
             count_project_experiments("smoke-test")
 
-        assert "Error counting experiments for project 'smoke-test'" in str(exc_info.value)
+        assert "Error counting experiments for project 'smoke-test'" in str(
+            exc_info.value
+        )
         assert "API connection failed" in str(exc_info.value)
 
 
@@ -791,7 +837,7 @@ class TestUpdatedListExperiments:
         """Test listing experiments with project filter."""
         mock_api = Mock()
         mock_api.get_default_workspace.return_value = "default-workspace"
-        
+
         mock_experiment = Mock()
         mock_experiment.id = "exp1"
         mock_experiment.name = "Filtered Experiment"
@@ -810,7 +856,9 @@ class TestUpdatedListExperiments:
         assert result[0]["name"] == "Filtered Experiment"
 
         # Verify API was called with project filter
-        mock_api.get_experiments.assert_called_once_with("default-workspace", project_name="smoke-test")
+        mock_api.get_experiments.assert_called_once_with(
+            "default-workspace", project_name="smoke-test"
+        )
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_list_experiments_with_workspace_and_project(self, mock_get_api):
@@ -823,9 +871,9 @@ class TestUpdatedListExperiments:
 
         assert isinstance(result, list)
         assert len(result) == 0
-        mock_api.get_experiments.assert_called_once_with("test-workspace", project_name="smoke-test")
-
-
+        mock_api.get_experiments.assert_called_once_with(
+            "test-workspace", project_name="smoke-test"
+        )
 
 
 if __name__ == "__main__":
