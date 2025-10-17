@@ -30,7 +30,6 @@ dependencies = [
     "comet-ml>=3.0.0",
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.20.0",
-    "matplotlib>=3.0.0",
 ]
 
 [project.optional-dependencies]

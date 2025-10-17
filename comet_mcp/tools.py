@@ -6,9 +6,6 @@ These tools require access to comet_ml.API() singleton.
 
 from typing import List, Dict, Any, Optional, TypedDict
 from datetime import datetime
-import base64
-import io
-import matplotlib.pyplot as plt
 from comet_mcp.utils import format_datetime
 from comet_mcp.session import get_comet_api, get_session_context
 
@@ -63,12 +60,6 @@ class SearchResults(TypedDict):
     count: int
     experiments: List[ExperimentInfo]
 
-class ImageResult(TypedDict):
-    """Result from an image-creating function."""
-
-    type: str
-    content_type: str
-    image_base64: str
 
 
 def list_experiments(
@@ -115,112 +106,6 @@ def list_experiments(
     except Exception as e:
         raise Exception(f"Error listing experiments: {e}")
 
-def get_plot_of_xy_data(data: List[List[float]], title: str = "XY Data Plot", metric_data: Optional[Dict[str, Any]] = None) -> ImageResult:
-    """
-    Create a plot of a list of [x, y] data points using matplotlib.
-    Can also plot multiple metrics from get_experiment_metrics.
-    
-    Args:
-        data: List of [x, y] coordinate pairs to plot (optional if metric_data provided)
-        title: Title for the plot (default: "XY Data Plot")
-        metric_data: Dictionary from get_experiment_metrics containing multiple metrics to plot
-        
-    Returns:
-        ImageResult with base64-encoded PNG image
-    """
-    # Create the plot
-    plt.figure(figsize=(12, 8))
-    
-    if metric_data and 'experiments' in metric_data:
-        # Plot multiple metrics from get_experiment_metrics (new structure)
-        experiments = metric_data['experiments']
-        colors = ['b-', 'r-', 'g-', 'm-', 'c-', 'y-', 'k-']  # Different colors for each metric
-        markers = ['o', 's', '^', 'v', 'D', 'p', '*']  # Different markers for each metric
-        color_index = 0
-        
-        for experiment_id, experiment_metrics in experiments.items():
-            for metric_name, metric_info in experiment_metrics.items():
-                if 'error' in metric_info:
-                    continue  # Skip metrics with errors
-                
-                data_points = metric_info['data']
-                if not data_points:
-                    continue
-                    
-                x_coords = [point[0] for point in data_points]
-                y_coords = [point[1] for point in data_points]
-                
-                color_style = colors[color_index % len(colors)]
-                marker_style = markers[color_index % len(markers)]
-                
-                # Create label with experiment ID and metric name
-                label = f"{experiment_id}: {metric_info.get('metric_name', metric_name)}"
-                
-                plt.plot(x_coords, y_coords, color_style, linewidth=2, 
-                        marker=marker_style, markersize=4, label=label)
-                color_index += 1
-        
-        plt.legend()
-        plt.xlabel(metric_data.get('x_axis', 'X'))
-        plt.ylabel('Metric Value')
-    elif metric_data and 'metrics' in metric_data:
-        # Plot multiple metrics from get_experiment_metrics (old structure for backward compatibility)
-        metrics = metric_data['metrics']
-        colors = ['b-', 'r-', 'g-', 'm-', 'c-', 'y-', 'k-']  # Different colors for each metric
-        markers = ['o', 's', '^', 'v', 'D', 'p', '*']  # Different markers for each metric
-        
-        for i, (metric_name, metric_info) in enumerate(metrics.items()):
-            if 'error' in metric_info:
-                continue  # Skip metrics with errors
-            
-            data_points = metric_info['data']
-            if not data_points:
-                continue
-                
-            x_coords = [point[0] for point in data_points]
-            y_coords = [point[1] for point in data_points]
-            
-            color_style = colors[i % len(colors)]
-            marker_style = markers[i % len(markers)]
-            
-            plt.plot(x_coords, y_coords, color_style, linewidth=2, 
-                    marker=marker_style, markersize=4, label=metric_info.get('metric_name', metric_name))
-        
-        plt.legend()
-        plt.xlabel(metric_data.get('x_axis', 'X'))
-        plt.ylabel('Metric Value')
-        
-    elif data:
-        # Plot single data series
-        x_coords = [point[0] for point in data]
-        y_coords = [point[1] for point in data]
-        
-        plt.plot(x_coords, y_coords, 'b-', linewidth=2, marker='o', markersize=4)
-        plt.xlabel('X')
-        plt.ylabel('Y')
-    else:
-        raise ValueError("Either data or metric_data must be provided")
-    
-    plt.title(title)
-    plt.grid(True, alpha=0.3)
-    
-    # Save plot to bytes buffer
-    buffer = io.BytesIO()
-    plt.savefig(buffer, format='png', dpi=150, bbox_inches='tight')
-    buffer.seek(0)
-    
-    # Convert to base64
-    image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-    
-    # Clean up
-    plt.close()
-    buffer.close()
-    
-    return ImageResult(
-        type="image_result",
-        content_type="image/png",
-        image_base64=image_base64
-    )
     
 def get_default_workspace() -> str:
     """
@@ -255,7 +140,7 @@ def get_experiment_metric_data(experiment_ids: List[str], metric_names: List[str
                 If not provided, will try in order of priority: steps, epochs, timestamps, durations
         
     Returns:
-        Dictionary containing experiment_ids, x_axis, and metrics data with (x, y) coordinate pairs for plotting
+        Dictionary containing experiment_ids, x_axis, and metrics data with (x, y) coordinate pairs
     """
     with get_comet_api() as api:
         try:
@@ -324,7 +209,7 @@ def get_experiment_metric_data(experiment_ids: List[str], metric_names: List[str
                     experiment_metrics[metric_name] = {
                         "metric_name": metric_name,
                         "x_axis": current_x_axis,
-                        "data": list(zip(x_axis_values, values))  # (x, y) pairs for plotting
+                        "data": list(zip(x_axis_values, values))  # (x, y) pairs
                     }
                     experiment_has_data = True
                 

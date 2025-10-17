@@ -52,8 +52,7 @@ export COMET_WORKSPACE=your_workspace_name
 - **`list_experiments(workspace, project_name)`** - List recent experiments with optional filtering
 - **`get_experiment_details(experiment_id)`** - Get comprehensive experiment information including metrics and parameters
 - **`get_experiment_code(experiment_id)`** - Retrieve source code from experiments
-- **`get_experiment_metric_data(experiment_ids, metric_names, x_axis)`** - Get metric data for multiple experiments with plotting support
-- **`get_plot_of_xy_data(data, title, metric_data)`** - Create matplotlib plots from data points or metric data
+- **`get_experiment_metric_data(experiment_ids, metric_names, x_axis)`** - Get metric data for multiple experiments
 - **`get_default_workspace()`** - Get the default workspace name for the current user
 - **`list_projects(workspace)`** - List all projects in a workspace
 - **`list_project_experiments(project_name, workspace)`** - List experiments within a specific project
