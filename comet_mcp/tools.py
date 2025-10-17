@@ -443,3 +443,6 @@ def count_project_experiments(
         raise Exception(f"Error counting experiments for project '{project_name}': {e}")
 
 
+def _initialize():
+    from comet_mcp.session import initialize_session
+    initialize_session()
