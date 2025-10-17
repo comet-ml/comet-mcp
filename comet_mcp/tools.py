@@ -280,6 +280,10 @@ def list_projects(
     """
     List project names in a Comet ML workspace with filtering and pagination support.
 
+    IMPORTANT: This function is expensive as it fetches all projects from the workspace.
+    Do NOT use this function to validate if a specific project exists. Instead, use
+    validate_project() which is much faster for validation purposes.
+
     Args:
         workspace: Workspace name (optional, uses default workspace if not provided)
         prefix: Filter projects by name prefix (optional, case-insensitive)
@@ -352,6 +356,9 @@ def list_projects(
 def get_project_details(project_name: str, workspace: Optional[str]) -> Dict[str, Any]:
     """
     Get detailed information about a project.
+
+    Note: If you need to validate that a project exists before calling this function,
+    use validate_project() instead of list_projects() for better performance.
 
     Args:
         project_name: the name of the project of which to get details
@@ -438,6 +445,9 @@ def list_project_experiments(
     """
     List experiments in a specific project.
 
+    Note: If you need to validate that a project exists before calling this function,
+    use validate_project() instead of list_projects() for better performance.
+
     Args:
         project_name: Name of the project to get experiments from
         workspace: Workspace name (optional, uses default if not provided)
@@ -484,6 +494,9 @@ def count_project_experiments(
     """
     Count experiments in a specific project.
 
+    Note: If you need to validate that a project exists before calling this function,
+    use validate_project() instead of list_projects() for better performance.
+
     Args:
         project_name: Name of the project to count experiments in
         workspace: Workspace name (optional, uses default if not provided)
@@ -518,19 +531,63 @@ def count_project_experiments(
             "experiment_count": count,
             "experiments": (
                 [
-                    ExperimentInfo(
-                        id=exp.id,
-                        name=exp.name,
-                        status=exp.get_state(),
-                        created_at=format_datetime(exp.start_server_timestamp),
-                        description=getattr(exp, "description", None),
-                    )
+                    {
+                        "id": exp.id,
+                        "name": exp.name,
+                        "status": exp.get_state(),
+                        "created_at": format_datetime(exp.start_server_timestamp),
+                        "description": getattr(exp, "description", None),
+                    }
                     for exp in experiments
                 ]
                 if experiments
                 else []
             ),
         }
+
+
+def validate_project(
+    project_name: str, workspace: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Lightweight validation to check if a project exists without listing all projects.
+    This is much faster than list_projects() and should be used for validation purposes.
+
+    Args:
+        project_name: Name of the project to validate
+        workspace: Workspace name (optional, uses default if not provided)
+
+    Returns:
+        Dictionary containing:
+        - project_name: The name of the project that was validated
+        - workspace: The workspace name where the project was searched
+        - exists: Boolean indicating if the project exists
+        - error: Error message if validation failed, None if successful
+    """
+    with get_comet_api() as api:
+        try:
+            # Determine target workspace
+            if workspace:
+                target_workspace = workspace
+            else:
+                target_workspace = api.get_default_workspace()
+
+            # Try to get project details - this will fail if project doesn't exist
+            project_details = api.get_project(target_workspace, project_name)
+
+            return {
+                "project_name": project_name,
+                "workspace": target_workspace,
+                "exists": True,
+                "error": None,
+            }
+        except Exception as e:
+            return {
+                "project_name": project_name,
+                "workspace": workspace or "default",
+                "exists": False,
+                "error": str(e),
+            }
 
 
 def _initialize():

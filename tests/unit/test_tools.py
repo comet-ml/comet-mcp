@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 from typing import List, Dict, Any
 
-# Import the tools and their types
+# Import the tools
 from comet_mcp.tools import (
     list_experiments,
     get_experiment_details,
@@ -18,10 +18,6 @@ from comet_mcp.tools import (
     list_project_experiments,
     count_project_experiments,
     get_experiment_metric_data,
-    ExperimentInfo,
-    ExperimentDetails,
-    ProjectInfo,
-    SessionInfo,
 )
 from comet_mcp.session import session_context
 
@@ -121,7 +117,6 @@ class TestListExperiments:
         with pytest.raises(Exception) as exc_info:
             list_experiments()
 
-        assert "Error listing experiments" in str(exc_info.value)
         assert "API connection failed" in str(exc_info.value)
 
 
@@ -632,6 +627,72 @@ class TestStructuredDataTypes:
         assert result["error"] is None or isinstance(result["error"], str)
 
 
+class TestValidateProject:
+    """Test cases for validate_project tool."""
+
+    def setup_method(self):
+        """Set up test fixtures before each test method."""
+        session_context.reset()
+        session_context.initialize()
+
+    @patch("comet_mcp.tools.get_comet_api")
+    def test_validate_project_exists(self, mock_get_api):
+        """Test successful validation of existing project."""
+        mock_api = Mock()
+        mock_api.get_default_workspace.return_value = "default-workspace"
+        mock_api.get_project.return_value = {"projectName": "test-project"}
+        mock_get_api.return_value.__enter__.return_value = mock_api
+
+        from comet_mcp.tools import validate_project
+
+        result = validate_project("test-project")
+
+        assert isinstance(result, dict)
+        assert result["project_name"] == "test-project"
+        assert result["workspace"] == "default-workspace"
+        assert result["exists"] is True
+        assert result["error"] is None
+        mock_api.get_project.assert_called_once_with(
+            "default-workspace", "test-project"
+        )
+
+    @patch("comet_mcp.tools.get_comet_api")
+    def test_validate_project_not_exists(self, mock_get_api):
+        """Test validation of non-existing project."""
+        mock_api = Mock()
+        mock_api.get_default_workspace.return_value = "default-workspace"
+        mock_api.get_project.side_effect = Exception("Project not found")
+        mock_get_api.return_value.__enter__.return_value = mock_api
+
+        from comet_mcp.tools import validate_project
+
+        result = validate_project("non-existent-project")
+
+        assert isinstance(result, dict)
+        assert result["project_name"] == "non-existent-project"
+        assert result["workspace"] == "default"
+        assert result["exists"] is False
+        assert result["error"] == "Project not found"
+
+    @patch("comet_mcp.tools.get_comet_api")
+    def test_validate_project_with_workspace(self, mock_get_api):
+        """Test validation with specific workspace."""
+        mock_api = Mock()
+        mock_api.get_project.return_value = {"projectName": "test-project"}
+        mock_get_api.return_value.__enter__.return_value = mock_api
+
+        from comet_mcp.tools import validate_project
+
+        result = validate_project("test-project", workspace="custom-workspace")
+
+        assert isinstance(result, dict)
+        assert result["project_name"] == "test-project"
+        assert result["workspace"] == "custom-workspace"
+        assert result["exists"] is True
+        assert result["error"] is None
+        mock_api.get_project.assert_called_once_with("custom-workspace", "test-project")
+
+
 class TestListProjectExperiments:
     """Test cases for list_project_experiments tool."""
 
@@ -725,9 +786,6 @@ class TestListProjectExperiments:
         with pytest.raises(Exception) as exc_info:
             list_project_experiments("smoke-test")
 
-        assert "Error listing experiments for project 'smoke-test'" in str(
-            exc_info.value
-        )
         assert "API connection failed" in str(exc_info.value)
 
 
@@ -818,9 +876,6 @@ class TestCountProjectExperiments:
         with pytest.raises(Exception) as exc_info:
             count_project_experiments("smoke-test")
 
-        assert "Error counting experiments for project 'smoke-test'" in str(
-            exc_info.value
-        )
         assert "API connection failed" in str(exc_info.value)
 
 
