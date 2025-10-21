@@ -10,8 +10,23 @@ from comet_mcp.utils import format_datetime
 from comet_mcp.session import get_comet_api, get_session_context
 
 
+def _get_state(metadata):
+    if metadata["running"]:
+        return "running"
+
+    if metadata["hasCrashed"]:
+        return "crashed"
+
+    return "finished"
+
+
 def list_experiments(
-    workspace: Optional[str] = None, project_name: Optional[str] = None
+    workspace: Optional[str] = None,
+    project_name: Optional[str] = None,
+    page: Optional[int] = 1,
+    page_size: Optional[int] = 10,
+    sort_by: Optional[str] = None,
+    sort_order: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     List recent experiments from Comet ML. Typically, don't show the
@@ -20,6 +35,11 @@ def list_experiments(
     Args:
         workspace: Workspace name (optional, uses default if not provided)
         project_name: Project name to filter experiments (optional)
+        page: get paged results, starting with page 1
+        page_size: get this number of experiments at a time
+        sort_by: Field to sort by. Must be "startTime" or "endTime" if provided.
+        sort_order: Sort direction. Must be "asc" or "desc" if provided.
+            Required when page, page_size, and sort_by are all specified.
 
     Returns:
         List of dictionaries containing experiment details:
@@ -39,10 +59,21 @@ def list_experiments(
         # Get experiments for the specified workspace and project
         if project_name:
             experiments = api.get_experiments(
-                target_workspace, project_name=project_name
+                workspace=target_workspace,
+                project_name=project_name,
+                page=page,
+                page_size=page_size,
+                sort_by=sort_by,
+                sort_order=sort_order,
             )
         else:
-            experiments = api.get_experiments(target_workspace)
+            experiments = api.get_experiments(
+                workspace=target_workspace,
+                page=page,
+                page_size=page_size,
+                sort_by=sort_by,
+                sort_order=sort_order,
+            )
 
         if not experiments:
             return []
@@ -439,60 +470,11 @@ def get_session_info() -> Dict[str, Any]:
         }
 
 
-def list_project_experiments(
-    project_name: str, workspace: Optional[str] = None
-) -> List[Dict[str, Any]]:
-    """
-    List experiments in a specific project.
-
-    Note: If you need to validate that a project exists before calling this function,
-    use validate_project() instead of list_projects() for better performance.
-
-    Args:
-        project_name: Name of the project to get experiments from
-        workspace: Workspace name (optional, uses default if not provided)
-
-    Returns:
-        List of dictionaries containing experiment details:
-        - id: Unique experiment identifier
-        - name: Human-readable experiment name
-        - status: Current experiment state (e.g., "running", "finished")
-        - created_at: Formatted timestamp when experiment was created
-        - description: Optional experiment description if available
-    """
-    with get_comet_api() as api:
-        # Determine target workspace
-        if workspace:
-            target_workspace = workspace
-        else:
-            target_workspace = api.get_default_workspace()
-
-        # Get experiments for the specific project
-        experiments = api.get_experiments(target_workspace, project_name=project_name)
-
-        if not experiments:
-            return []
-
-        result = []
-        for exp in experiments:
-            result.append(
-                {
-                    "id": exp.id,
-                    "name": exp.name,
-                    "status": exp.get_state(),
-                    "created_at": format_datetime(exp.start_server_timestamp),
-                    "description": getattr(exp, "description", None),
-                }
-            )
-
-        return result
-
-
-def count_project_experiments(
+def get_all_experiments_summary(
     project_name: str, workspace: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Count experiments in a specific project.
+    Get count and experiment summary in a specific project.
 
     Note: If you need to validate that a project exists before calling this function,
     use validate_project() instead of list_projects() for better performance.
@@ -511,7 +493,6 @@ def count_project_experiments(
           - name: Human-readable experiment name
           - status: Current experiment state
           - created_at: Formatted timestamp when experiment was created
-          - description: Optional experiment description if available
     """
     with get_comet_api() as api:
         # Determine target workspace
@@ -520,30 +501,31 @@ def count_project_experiments(
         else:
             target_workspace = api.get_default_workspace()
 
-        # Get experiments for the specific project
-        experiments = api.get_experiments(target_workspace, project_name=project_name)
-
+        # Get experiments for the specific project; could be paged
+        experiments = api._get_project_experiments(
+            target_workspace,
+            project_name,
+        )
         count = len(experiments) if experiments else 0
-
-        return {
-            "project_name": project_name,
-            "workspace": target_workspace,
-            "experiment_count": count,
-            "experiments": (
-                [
-                    {
-                        "id": exp.id,
-                        "name": exp.name,
-                        "status": exp.get_state(),
-                        "created_at": format_datetime(exp.start_server_timestamp),
-                        "description": getattr(exp, "description", None),
-                    }
-                    for exp in experiments
-                ]
-                if experiments
-                else []
-            ),
-        }
+        for metadatum in experiments.values():
+            return {
+                "project_name": project_name,
+                "workspace": target_workspace,
+                "experiment_count": count,
+                "experiments": (
+                    [
+                        {
+                            "id": exp["experimentKey"],
+                            "name": exp["experimentName"],
+                            "status": _get_state(exp),
+                            "created_at": format_datetime(exp["startTimeMillis"]),
+                        }
+                        for exp in experiments.values()
+                    ]
+                    if experiments
+                    else []
+                ),
+            }
 
 
 def validate_project(
@@ -588,6 +570,213 @@ def validate_project(
                 "exists": False,
                 "error": str(e),
             }
+
+
+def get_experiment_summary(experiment_id: str) -> Dict[str, Any]:
+    """
+    Get a summary of experiment performance with final/best metric values.
+    Use this for performance comparison and final results analysis.
+
+    Args:
+        experiment_id: The ID of the experiment to retrieve summary for
+
+    Returns:
+        Dictionary containing:
+        - id: Unique experiment identifier
+        - name: Human-readable experiment name
+        - status: Current experiment state
+        - final_metrics: Dictionary of final/best metric values
+        - best_metrics: Dictionary of best metric values achieved during training
+        - created_at: Formatted timestamp when experiment was created
+        - updated_at: Formatted timestamp when experiment was last updated
+    """
+    with get_comet_api() as api:
+        experiment = api.get_experiment_by_key(experiment_id)
+
+        if not experiment:
+            raise Exception(f"Experiment with ID '{experiment_id}' not found.")
+
+        # Get final metrics
+        final_metrics = {}
+        best_metrics = {}
+
+        metrics_summary = experiment.get_metrics_summary()
+        if metrics_summary:
+            for metric in metrics_summary:
+                metric_name = metric["name"]
+                final_metrics[metric_name] = metric.get("valueCurrent", 0)
+                best_metrics[metric_name] = metric.get(
+                    "valueMax", metric.get("valueCurrent", 0)
+                )
+
+        return {
+            "id": experiment.id,
+            "name": experiment.name,
+            "status": experiment.get_state(),
+            "final_metrics": final_metrics,
+            "best_metrics": best_metrics,
+            "created_at": format_datetime(experiment.start_server_timestamp),
+            "updated_at": format_datetime(
+                experiment.end_server_timestamp or experiment.start_server_timestamp
+            ),
+        }
+
+
+def get_experiment_training_progress(
+    experiment_id: str, metric_names: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """
+    Get detailed training progress data for an experiment.
+    ⚠️ WARNING: This is an EXPENSIVE operation that fetches ALL training data.
+    Use ONLY when specifically analyzing learning curves, convergence patterns,
+    or investigating overfitting/underfitting with step-by-step data.
+
+    Args:
+        experiment_id: The ID of the experiment to retrieve training progress for
+        metric_names: Optional list of specific metric names to retrieve.
+                     If None, retrieves all available metrics.
+
+    Returns:
+        Dictionary containing:
+        - id: Unique experiment identifier
+        - name: Human-readable experiment name
+        - training_metrics: Dictionary mapping metric names to their training data:
+          Each metric contains:
+          - metric_name: The name of the metric
+          - x_axis: The x-axis type used (steps, epochs, timestamps, or durations)
+          - data: List of (x, y) coordinate pairs representing the metric values over time
+        - available_metrics: List of all available metric names for this experiment
+    """
+    with get_comet_api() as api:
+        experiment = api.get_experiment_by_key(experiment_id)
+
+        if not experiment:
+            raise Exception(f"Experiment with ID '{experiment_id}' not found.")
+
+        # Get all available metrics if none specified
+        if metric_names is None:
+            metrics_summary = experiment.get_metrics_summary()
+            metric_names = (
+                [metric["name"] for metric in metrics_summary]
+                if metrics_summary
+                else []
+            )
+
+        # Get training data for specified metrics
+        training_data = api.get_metrics_for_chart([experiment_id], metric_names)
+
+        training_metrics = {}
+        available_metrics = []
+
+        if experiment_id in training_data and training_data[experiment_id]:
+            experiment_data = training_data[experiment_id]
+
+            if not experiment_data.get("empty", True):
+                for metric in experiment_data.get("metrics", []):
+                    metric_name = metric.get("metricName")
+                    if metric_name in metric_names:
+                        available_metrics.append(metric_name)
+
+                        # Determine best x_axis to use
+                        x_axis = None
+                        for axis in ["steps", "epochs", "timestamps", "durations"]:
+                            if axis in metric and metric[axis] is not None:
+                                x_axis = axis
+                                break
+
+                        if x_axis:
+                            x_values = metric[x_axis]
+                            y_values = metric["values"]
+
+                            # Convert timestamps to datetime objects if needed
+                            if x_axis == "timestamps":
+                                x_values = [
+                                    datetime.fromtimestamp(val) for val in x_values
+                                ]
+
+                            training_metrics[metric_name] = {
+                                "metric_name": metric_name,
+                                "x_axis": x_axis,
+                                "data": list(zip(x_values, y_values)),
+                            }
+
+        return {
+            "id": experiment.id,
+            "name": experiment.name,
+            "training_metrics": training_metrics,
+            "available_metrics": available_metrics,
+        }
+
+
+def get_experiment_parameters(experiment_id: str) -> Dict[str, Any]:
+    """
+    Get experiment parameters and configuration settings.
+    Use this for configuration analysis and hyperparameter investigation.
+
+    Args:
+        experiment_id: The ID of the experiment to retrieve parameters for
+
+    Returns:
+        Dictionary containing:
+        - id: Unique experiment identifier
+        - name: Human-readable experiment name
+        - parameters: Dictionary mapping parameter names to their values
+        - hyperparameters: Dictionary of hyperparameter settings
+        - model_info: Dictionary containing model-related configuration
+        - training_config: Dictionary containing training-related settings
+    """
+    with get_comet_api() as api:
+        experiment = api.get_experiment_by_key(experiment_id)
+
+        if not experiment:
+            raise Exception(f"Experiment with ID '{experiment_id}' not found.")
+
+        # Get parameters summary
+        params_summary = experiment.get_parameters_summary()
+        parameters = {}
+        hyperparameters = {}
+        model_info = {}
+        training_config = {}
+
+        if params_summary:
+            for param in params_summary:
+                param_name = param["name"]
+                param_value = param.get("valueCurrent", "")
+
+                # Categorize parameters
+                if (
+                    "model" in param_name.lower()
+                    or "architecture" in param_name.lower()
+                ):
+                    model_info[param_name] = param_value
+                elif any(
+                    keyword in param_name.lower()
+                    for keyword in [
+                        "learning_rate",
+                        "lr",
+                        "batch_size",
+                        "epochs",
+                        "optimizer",
+                        "loss",
+                    ]
+                ):
+                    training_config[param_name] = param_value
+                elif any(
+                    keyword in param_name.lower()
+                    for keyword in ["hyperparameter", "hp_", "param_", "config"]
+                ):
+                    hyperparameters[param_name] = param_value
+                else:
+                    parameters[param_name] = param_value
+
+        return {
+            "id": experiment.id,
+            "name": experiment.name,
+            "parameters": parameters,
+            "hyperparameters": hyperparameters,
+            "model_info": model_info,
+            "training_config": training_config,
+        }
 
 
 def _initialize():
