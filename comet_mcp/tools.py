@@ -33,7 +33,7 @@ def list_experiments(
     user the experiment_id unless they ask to see it.
 
     Args:
-        workspace: Workspace name (optional, uses default if not provided)
+        workspace: Workspace name (optional, will lookup the default workspace name if not provided)
         project_name: Project name to filter experiments (optional)
         page: get paged results, starting with page 1
         page_size: get this number of experiments at a time
@@ -316,7 +316,7 @@ def list_projects(
     validate_project() which is much faster for validation purposes.
 
     Args:
-        workspace: Workspace name (optional, uses default workspace if not provided)
+        workspace: Workspace name (optional, will lookup the default workspace if not provided)
         prefix: Filter projects by name prefix (optional, case-insensitive)
         limit: Maximum number of projects to return per page (default: 10, max: 100)
         offset: Number of projects to skip for pagination (default: 0)
@@ -537,7 +537,7 @@ def validate_project(
 
     Args:
         project_name: Name of the project to validate
-        workspace: Workspace name (optional, uses default if not provided)
+        workspace: Workspace name (optional, will lookup the default workspace if not provided)
 
     Returns:
         Dictionary containing:
@@ -566,7 +566,7 @@ def validate_project(
         except Exception as e:
             return {
                 "project_name": project_name,
-                "workspace": workspace or "default",
+                "workspace": target_workspace,
                 "exists": False,
                 "error": str(e),
             }
