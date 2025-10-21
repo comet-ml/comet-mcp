@@ -1,0 +1,14 @@
+{
+  "model": "openai/gpt-4o-mini",
+  "model_kwargs": {
+    "temperature": 0.0
+  },
+  "mcp_servers": [
+    {
+      "name": "comet-mcp",
+      "description": "Comet ML MCP server",
+      "command": "comet-mcp",
+      "args": []
+    }
+  ]
+}
