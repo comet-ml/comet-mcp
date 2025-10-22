@@ -114,7 +114,7 @@ options:
 
 ## 4. Intergration with Opik for use, testing, and optimization
 
-For complete details on testing this (or any MCP server) see [examples/README](examples/README.md).
+For complete details on testing this (or any MCP server) see [examples/README](https://github.com/comet-ml/comet-mcp/blob/main/examples/README.md).
 
 ## License
 
