@@ -30,7 +30,27 @@ def list_experiments(
     sort_by: Optional[str] = None,
     sort_order: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """List recent experiments from Comet ML"""
+    """
+    List recent experiments from Comet ML. Typically, don't show the
+    user the experiment_id unless they ask to see it.
+
+    Args:
+        workspace: Workspace name (optional, will lookup the default workspace name if not provided)
+        project_name: Project name to filter experiments (optional)
+        page: get paged results, starting with page 1
+        page_size: get this number of experiments at a time
+        sort_by: Field to sort by. Must be "startTime" or "endTime" if provided.
+        sort_order: Sort direction. Must be "asc" or "desc" if provided.
+            Required when page, page_size, and sort_by are all specified.
+
+    Returns:
+        List of dictionaries containing experiment details:
+        - id: Unique experiment identifier
+        - name: Human-readable experiment name
+        - status: Current experiment state (e.g., "running", "finished")
+        - created_at: Formatted timestamp when experiment was created
+        - description: Optional experiment description if available
+    """
     with get_comet_api() as api:
         # Determine target workspace
         if workspace:
@@ -77,13 +97,28 @@ def list_experiments(
 
 @cached(ttl_seconds=3600)  # Cache for 1 hour
 def get_default_workspace() -> str:
-    """Get the default workspace name for this user"""
+    """
+    Get the default workspace name for this user.
+
+    Returns:
+        String containing the default workspace name for the authenticated user.
+        This is the workspace that will be used when no workspace is explicitly specified.
+    """
     with get_comet_api() as api:
         return api.get_default_workspace()
 
 
 def get_experiment_code(experiment_id: str) -> Dict[str, str]:
-    """Get the code for a specific experiment"""
+    """
+    Get the code for a specific experiment.
+
+    Args:
+        experiment_id: The ID of the experiment to retrieve
+
+    Returns:
+        Dictionary containing:
+        - code: String containing the complete source code that was logged for this experiment
+    """
     with get_comet_api() as api:
         experiment = api.get_experiment_by_key(experiment_id)
         return {"code": experiment.get_code()}
@@ -92,7 +127,28 @@ def get_experiment_code(experiment_id: str) -> Dict[str, str]:
 def get_experiment_metric_data(
     experiment_ids: List[str], metric_names: List[str], x_axis: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Get multiple metric data for specific experiments"""
+    """
+    Get multiple metric data for specific experiments. Use this tool to
+    get metrics for multiple experiments at once. You must pass in at
+    least one experiment ID, and at least one metric name. Only use
+    this tool if you want the entire metric values.
+
+    Args:
+        experiment_ids: List of experiment IDs to retrieve metrics for
+        metric_names: List of metric names to retrieve
+        x_axis: The name of the x-axis to retrieve (optional). Must be: "steps", "epochs", "timestamps", or "durations".
+                If not provided, will try in order of priority: steps, epochs, timestamps, durations
+
+    Returns:
+        Dictionary containing:
+        - experiment_ids: List of experiment IDs that were requested
+        - x_axis: The x-axis type used (either specified or auto-selected)
+        - experiments: Dictionary mapping experiment IDs to their metric data:
+          Each experiment contains a dictionary of metric names, where each metric has:
+          - metric_name: The name of the metric
+          - x_axis: The x-axis type used for this metric
+          - data: List of (x, y) coordinate pairs representing the metric values over time
+    """
     with get_comet_api() as api:
         data = api.get_metrics_for_chart(experiment_ids, metric_names)
 
@@ -191,7 +247,25 @@ def get_experiment_metric_data(
 
 
 def get_experiment_details(experiment_id: str) -> Dict[str, Any]:
-    """Get detailed information about a specific experiment, including metric and parameter names"""
+    """
+    Get detailed information about a specific experiment, including
+    metric and parameter names.
+
+    Args:
+        experiment_id: The ID of the experiment to retrieve
+
+    Returns:
+        Dictionary containing:
+        - id: Unique experiment identifier
+        - url: Direct URL to view the experiment in Comet ML web interface
+        - name: Human-readable experiment name
+        - status: Current experiment state (e.g., "running", "finished")
+        - created_at: Formatted timestamp when experiment was created
+        - updated_at: Formatted timestamp when experiment was last updated
+        - description: Optional experiment description if available
+        - metrics: List of dictionaries with metric names and current values
+        - parameters: List of dictionaries with parameter names and current values
+    """
     with get_comet_api() as api:
         experiment = api.get_experiment_by_key(experiment_id)
 
@@ -238,7 +312,31 @@ def list_projects(
     page: Optional[int] = 1,
     page_size: Optional[int] = 10,
 ) -> Dict[str, Any]:
-    """List project names in a Comet ML workspace with filtering and pagination support"""
+    """
+    List project names in a Comet ML workspace with filtering and pagination support.
+
+    IMPORTANT: This function is expensive as it fetches all projects from the workspace.
+    Do NOT use this function to validate if a specific project exists. Instead, use
+    validate_project() which is much faster for validation purposes.
+
+    Args:
+        workspace: Workspace name (optional, will lookup the default workspace if not provided)
+        prefix: Filter projects by name prefix (optional, case-insensitive)
+        page: Page number to retrieve (default: 1, starts from 1)
+        page_size: Number of projects to return per page (default: 10, max: 100)
+
+    Returns:
+        Dictionary containing:
+        - workspace: The workspace name that was searched
+        - projects: List of project names matching the criteria (sorted alphabetically)
+        - total_count: Total number of projects in the workspace
+        - filtered_count: Number of projects matching the prefix filter (if prefix provided)
+        - page_info: Dictionary with pagination metadata:
+          - page: Current page number
+          - page_size: Number of projects per page
+          - has_more: Boolean indicating if more results are available
+          - returned_count: Actual number of projects returned in this page
+    """
     with get_comet_api() as api:
         if workspace:
             target_workspace = workspace
@@ -291,7 +389,24 @@ def list_projects(
 
 
 def get_project_details(project_name: str, workspace: Optional[str]) -> Dict[str, Any]:
-    """Get detailed information about a project"""
+    """
+    Get detailed information about a project.
+
+    Note: If you need to validate that a project exists before calling this function,
+    use validate_project() instead of list_projects() for better performance.
+
+    Args:
+        project_name: the name of the project of which to get details
+        workspace: The workspace name
+
+    Returns:
+        Dictionary containing:
+        - name: The project name
+        - workspace: The workspace name where the project is located
+        - created_at: Formatted timestamp when the project was created
+        - description: Project description if available (empty string if none)
+    """
+    # Get detailed project information
     with get_comet_api() as api:
         if workspace:
             target_workspace = workspace
@@ -308,8 +423,18 @@ def get_project_details(project_name: str, workspace: Optional[str]) -> Dict[str
 
 
 @cached(ttl_seconds=600)  # Cache for 10 minutes
-def _get_session_info() -> Dict[str, Any]:
-    """Get information about the current Comet ML session"""
+def get_session_info() -> Dict[str, Any]:
+    """
+    Get information about the current Comet ML session.
+
+    Returns:
+        Dictionary containing:
+        - initialized: Boolean indicating if the Comet ML session is properly initialized
+        - api_status: String describing the connection status ("Connected", "Not initialized", "Error")
+        - user: Username of the authenticated user, or workspace info if user info unavailable
+        - workspace: Default workspace name for the user
+        - error: Error message if there was a problem, None if successful
+    """
     session_context = get_session_context()
 
     if not session_context.is_initialized():
@@ -353,7 +478,27 @@ def _get_session_info() -> Dict[str, Any]:
 def get_all_experiments_summary(
     project_name: str, workspace: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Get count and experiment summary in a specific project"""
+    """
+    Get count and experiment summary in a specific project.
+
+    Note: If you need to validate that a project exists before calling this function,
+    use validate_project() instead of list_projects() for better performance.
+
+    Args:
+        project_name: Name of the project to count experiments in
+        workspace: Workspace name (optional, uses default if not provided)
+
+    Returns:
+        Dictionary containing:
+        - project_name: The name of the project that was counted
+        - workspace: The workspace name where the project is located
+        - experiment_count: Total number of experiments in the project
+        - experiments: List of dictionaries with basic experiment details:
+          - id: Unique experiment identifier
+          - name: Human-readable experiment name
+          - status: Current experiment state
+          - created_at: Formatted timestamp when experiment was created
+    """
     with get_comet_api() as api:
         # Determine target workspace
         if workspace:
@@ -391,7 +536,21 @@ def get_all_experiments_summary(
 def validate_project(
     project_name: str, workspace: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Lightweight validation to check if a project exists without listing all projects"""
+    """
+    Lightweight validation to check if a project exists without listing all projects.
+    This is much faster than list_projects() and should be used for validation purposes.
+
+    Args:
+        project_name: Name of the project to validate
+        workspace: Workspace name (optional, will lookup the default workspace if not provided)
+
+    Returns:
+        Dictionary containing:
+        - project_name: The name of the project that was validated
+        - workspace: The workspace name where the project was searched
+        - exists: Boolean indicating if the project exists
+        - error: Error message if validation failed, None if successful
+    """
     with get_comet_api() as api:
         try:
             # Determine target workspace
@@ -419,7 +578,23 @@ def validate_project(
 
 
 def get_experiment_summary(experiment_id: str) -> Dict[str, Any]:
-    """Get a summary of experiment performance with final/best metric values"""
+    """
+    Get a summary of experiment performance with final/best metric values.
+    Use this for performance comparison and final results analysis.
+
+    Args:
+        experiment_id: The ID of the experiment to retrieve summary for
+
+    Returns:
+        Dictionary containing:
+        - id: Unique experiment identifier
+        - name: Human-readable experiment name
+        - status: Current experiment state
+        - final_metrics: Dictionary of final/best metric values
+        - best_metrics: Dictionary of best metric values achieved during training
+        - created_at: Formatted timestamp when experiment was created
+        - updated_at: Formatted timestamp when experiment was last updated
+    """
     with get_comet_api() as api:
         experiment = api.get_experiment_by_key(experiment_id)
 
@@ -455,7 +630,28 @@ def get_experiment_summary(experiment_id: str) -> Dict[str, Any]:
 def get_experiment_training_progress(
     experiment_id: str, metric_names: Optional[List[str]] = None
 ) -> Dict[str, Any]:
-    """Get detailed training progress data for an experiment."""
+    """
+    Get detailed training progress data for an experiment.
+    ⚠️ WARNING: This is an EXPENSIVE operation that fetches ALL training data.
+    Use ONLY when specifically analyzing learning curves, convergence patterns,
+    or investigating overfitting/underfitting with step-by-step data.
+
+    Args:
+        experiment_id: The ID of the experiment to retrieve training progress for
+        metric_names: Optional list of specific metric names to retrieve.
+                     If None, retrieves all available metrics.
+
+    Returns:
+        Dictionary containing:
+        - id: Unique experiment identifier
+        - name: Human-readable experiment name
+        - training_metrics: Dictionary mapping metric names to their training data:
+          Each metric contains:
+          - metric_name: The name of the metric
+          - x_axis: The x-axis type used (steps, epochs, timestamps, or durations)
+          - data: List of (x, y) coordinate pairs representing the metric values over time
+        - available_metrics: List of all available metric names for this experiment
+    """
     with get_comet_api() as api:
         experiment = api.get_experiment_by_key(experiment_id)
 
@@ -518,7 +714,20 @@ def get_experiment_training_progress(
 
 
 def get_experiment_parameters(experiment_id: str) -> Dict[str, Any]:
-    """Get experiment parameters and configuration settings"""
+    """
+    Get experiment parameters and configuration settings.
+    Use this for configuration analysis and hyperparameter investigation.
+
+    Args:
+        experiment_id: The ID of the experiment to retrieve parameters for
+
+    Returns:
+        Dictionary containing:
+        - id: Unique experiment identifier
+        - name: Human-readable experiment name
+        - parameters: Dictionary mapping parameter names to their values
+        - parameter_count: Total number of parameters found
+    """
     with get_comet_api() as api:
         experiment = api.get_experiment_by_key(experiment_id)
 
