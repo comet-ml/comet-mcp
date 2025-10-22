@@ -129,7 +129,7 @@ You can create a dataset interactively in the [Opik UI](https://www.comet.com/do
 create one programmatically. You don't need more than a few questions
 to get started.
 
-For those using `comet-mcp`, you can create test datasets programmatically or through the [Opik UI](https://www.comet.com/docs/opik/).
+For those using `comet-mcp`, you can create a test dataset and test experiments by following the instructions in [COMET-MCP-DATASET.md](https://github.com/comet-ml/comet-mcp/blob/main/examples/COMET-MCP-DATASET.md)
 
 An example dataset item looks like:
 
