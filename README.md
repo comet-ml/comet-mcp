@@ -9,7 +9,6 @@ A comprehensive Model Context Protocol (MCP) server that provides tools for inte
 - **📁 Project Management**: Organize and explore projects across workspaces
 - **🔍 Advanced Search**: Search experiments by name, description, and project
 - **📈 Session Management**: Singleton `comet_ml.API()` instance with robust error handling
-- **🧪 Comprehensive Testing**: Unit tests for all functionality
 
 ## Installation
 
@@ -21,24 +20,19 @@ A comprehensive Model Context Protocol (MCP) server that provides tools for inte
 ### Install from Source
 
 ```bash
-# Clone the repository
-git clone https://github.com/comet-ml/comet-mcp.git
-cd comet-mcp
-
-# Install in development mode
-pip install -e .
-
-# Or install with development dependencies
-pip install -e ".[dev]"
+pip install comet-mcp --upgrade
 ```
-
 
 ## Configuration
 
-The server uses environment variables for Comet ML configuration:
+The server uses standard comet_ml configuration:
+
+1. Using `comet init`; or
+2. Using environment variables
+
+Example:
 
 ```bash
-# Required: Your Comet ML API key
 export COMET_API_KEY=your_comet_api_key_here
 
 # Optional: Set default workspace (if not provided, uses your default)
@@ -84,7 +78,7 @@ The server will:
 
 ### 2. Configuration File
 
-Create a `config.json` file for custom server configurations:
+Create a configuration for your AI system. For example:
 
 ```json
 {
@@ -101,134 +95,26 @@ Create a `config.json` file for custom server configurations:
 }
 ```
 
-## Development
+`comet-mcp` supports "stdio" and "sse" transport modes.
 
-### Project Structure
+## 3. Command line options
 
 ```
-comet-mcp/
-├── comet_mcp/           # Main package
-│   ├── server.py        # MCP server implementation
-│   ├── tools.py         # Comet ML tools
-│   ├── session.py       # Session management
-│   └── utils.py         # Utilities and tool registry
-├── tests/               # Test suite
-│   └── unit/           # Unit tests
-├── pyproject.toml      # Project configuration
-└── LICENSE            # License file
+usage: comet-mcp [-h] [--transport {stdio,sse}] [--host HOST] [--port PORT]
+
+Comet ML MCP Server
+
+options:
+  -h, --help            show this help message and exit
+  --transport {stdio,sse}
+                        Transport method to use (default: stdio)
+  --host HOST           Host for SSE transport (default: localhost)
+  --port PORT           Port for SSE transport (default: 8000)
 ```
 
-### Running Tests
+## 4. Intergration with Opik for use, testing, and optimization
 
-```bash
-# Run all tests
-pytest
-
-# Run unit tests only
-pytest tests/unit/
-
-
-# Run with coverage
-pytest --cov=comet_mcp
-```
-
-### Code Quality
-
-The project includes comprehensive tooling for code quality:
-
-```bash
-# Format code
-black comet_mcp/ tests/
-
-# Sort imports
-isort comet_mcp/ tests/
-
-# Lint code
-flake8 comet_mcp/ tests/
-
-# Type checking
-mypy comet_mcp/
-```
-
-## Architecture
-
-### Session Management
-
-The server uses a robust session context manager that provides:
-
-- **Singleton Pattern**: Single `comet_ml.API()` instance per server session
-- **Thread Safety**: Safe concurrent access to Comet ML API
-- **Error Recovery**: Graceful handling of API initialization failures
-- **Configuration Management**: Centralized API key and workspace management
-
-### Tool Registry
-
-The tool registry system provides:
-
-- **Automatic Registration**: Decorator-based tool registration
-- **Schema Generation**: Automatic JSON schema generation from Python functions
-- **Type Safety**: Full type hints and validation
-- **Error Handling**: Comprehensive error reporting and recovery
-
-### MCP Integration
-
-The server implements the full MCP specification:
-
-- **Tool Discovery**: Dynamic tool listing and metadata
-- **Tool Execution**: Asynchronous tool calling with proper error handling
-- **Protocol Compliance**: Full compatibility with MCP clients
-- **Extensibility**: Easy addition of new tools and capabilities
-
-## Examples
-
-### List Recent Experiments
-
-```python
-# Through MCP client
-result = await client.call_tool("list_experiments", {"workspace": "my-workspace"})
-
-# Through chatbot
-# User: "Show me my recent experiments"
-```
-
-### Search Experiments
-
-```python
-# Search across all experiments
-result = await client.call_tool("search_experiments", {
-    "query": "machine learning",
-    "workspace": "research"
-})
-
-# Search within a specific project
-result = await client.call_tool("search_experiments", {
-    "query": "neural network",
-    "project_name": "deep-learning"
-})
-```
-
-### Analyze Project
-
-```python
-# Get project statistics
-count_result = await client.call_tool("count_project_experiments", {
-    "project_name": "my-project"
-})
-
-# List all experiments in project
-experiments = await client.call_tool("list_project_experiments", {
-    "project_name": "my-project"
-})
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass
-6. Submit a pull request
+For complete details on testing this (or any MCP server) see [examples/README](examples/README.md).
 
 ## License
 
