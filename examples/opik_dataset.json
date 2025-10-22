@@ -1,178 +1,178 @@
 [
     {
-        "question": "Can you display the training progress for the resnet50_baseline experiment in the comet_mcp_test project?",
-        "answer": "The resnet50_baseline experiment in our comet mcp test dataset showed good convergence with smooth training curves. Training loss decreased from ~0.65 to 0.15 over 50 epochs, while training accuracy increased from ~10% to 95%. Validation loss decreased from ~0.70 to 0.25, and validation accuracy increased from ~10% to 88%. The model converged well with consistent improvement throughout training."
+        "question": "Can you display the training progress for the resnet50_baseline experiment in the comet_mcp_tests project?",
+        "answer": "The resnet50_baseline experiment in our comet mcp tests dataset showed good convergence with smooth training curves. Training loss decreased from ~0.65 to 0.15 over 50 epochs, while training accuracy increased from ~10% to 95%. Validation loss decreased from ~0.70 to 0.25, and validation accuracy increased from ~10% to 88%. The model converged well with consistent improvement throughout training."
     },
     {
-        "question": "How well did the resnet50_baseline experiment converge during training in our comet-mcp_test experiment?",
-        "answer": "The resnet50_baseline experiment converged very well during training in our comet_mcp-test benchmark. The training curves showed smooth, consistent improvement over 50 epochs with no signs of instability. Training loss decreased steadily from ~0.65 to 0.15, and validation accuracy reached 88%. The convergence was stable with no oscillations or plateaus, indicating effective learning."
+        "question": "How well did the resnet50_baseline experiment converge during training in our comet-mcp_tests experiment?",
+        "answer": "The resnet50_baseline experiment converged very well during training in our comet_mcp-tests benchmark. The training curves showed smooth, consistent improvement over 50 epochs with no signs of instability. Training loss decreased steadily from ~0.65 to 0.15, and validation accuracy reached 88%. The convergence was stable with no oscillations or plateaus, indicating effective learning."
     },
     {
-        "question": "Did the resnet50_baseline experiment show signs of overfitting in our comet mcp test task?",
-        "answer": "Yes, the resnet50_baseline experiment showed some signs of overfitting in our comet_mcp_test dataset. There was a noticeable gap between training accuracy (95%) and validation accuracy (88%), indicating the model was fitting the training data better than it could generalize to validation data. The training loss (0.15) was also significantly lower than validation loss (0.25), which is a classic sign of overfitting."
+        "question": "Did the resnet50_baseline experiment show signs of overfitting in our comet mcp tests task?",
+        "answer": "Yes, the resnet50_baseline experiment showed some signs of overfitting in our comet_mcp_tests dataset. There was a noticeable gap between training accuracy (95%) and validation accuracy (88%), indicating the model was fitting the training data better than it could generalize to validation data. The training loss (0.15) was also significantly lower than validation loss (0.25), which is a classic sign of overfitting."
     },
     {
-        "question": "What was the training experience like for the resnet50_dropout experiment in our comet mcp test experiment?",
-        "answer": "The resnet50_dropout experiment had an excellent training experience in our comet_mcp-test benchmark with smooth convergence and no overfitting. Training loss decreased from ~0.60 to 0.12, training accuracy reached 96%, validation loss decreased to 0.20, and validation accuracy reached 92%. The dropout regularization (0.3) helped maintain good generalization with only a 4% gap between training and validation accuracy."
+        "question": "What was the training experience like for the resnet50_dropout experiment in our comet mcp tests experiment?",
+        "answer": "The resnet50_dropout experiment had an excellent training experience in our comet_mcp-tests benchmark with smooth convergence and no overfitting. Training loss decreased from ~0.60 to 0.12, training accuracy reached 96%, validation loss decreased to 0.20, and validation accuracy reached 92%. The dropout regularization (0.3) helped maintain good generalization with only a 4% gap between training and validation accuracy."
     },
     {
-        "question": "What were the final performance metrics for the efficientnet_b0 experiment in our comet mcp test project?",
+        "question": "What were the final performance metrics for the efficientnet_b0 experiment in our comet mcp tests project?",
         "answer": "The efficientnet_b0 experiment achieved final metrics of: Training accuracy: 94%, Training loss: 0.18, Validation accuracy: 85%, Validation loss: 0.28. The model used EfficientNet-B0 architecture with 5M parameters, learning rate 0.0008, batch size 64, and dropout 0.2. It showed good convergence but with some overfitting (9% gap between training and validation accuracy)."
     },
     {
-        "question": "What configuration was applied to the efficientnet_b0 experiment in our comet_mcp_test dataset?",
+        "question": "What configuration was applied to the efficientnet_b0 experiment in our comet_mcp_tests dataset?",
         "answer": "The efficientnet_b0 experiment was configured with: Learning rate: 0.0008, Batch size: 64, Epochs: 50, Dropout: 0.2, Weight decay: 0.0001, Model: EfficientNet-B0 (5M parameters), Optimizer: Adam, Training time: 30 minutes. The model used EfficientNet-B0 architecture which is more parameter-efficient than ResNet-50."
     },
     {
-        "question": "Can you break down the hyperparameter settings for the efficientnet_b0 experiment in our comet mcp test task?",
+        "question": "Can you break down the hyperparameter settings for the efficientnet_b0 experiment in our comet mcp tests task?",
         "answer": "The efficientnet_b0 experiment hyperparameters: Learning rate: 0.0008 (lower than ResNet experiments), Batch size: 64 (larger than ResNet experiments), Dropout: 0.2 (moderate regularization), Weight decay: 0.0001, Epochs: 50, Optimizer: Adam. The model has 5M parameters (much smaller than ResNet-50's 25M) and training time of 30 minutes."
     },
     {
-        "question": "What learning rate was configured for the resnet50_baseline experiment in our comet_mcp-test experiment?",
-        "answer": "The resnet50_baseline experiment used a learning rate of 0.001. This is a standard learning rate for ResNet-50 training on comet mcp test, providing good convergence while avoiding instability. The learning rate was kept constant throughout training without any scheduling."
+        "question": "What learning rate was configured for the resnet50_baseline experiment in our comet_mcp-tests experiment?",
+        "answer": "The resnet50_baseline experiment used a learning rate of 0.001. This is a standard learning rate for ResNet-50 training on comet mcp tests, providing good convergence while avoiding instability. The learning rate was kept constant throughout training without any scheduling."
     },
     {
-        "question": "How do the batch sizes differ between the resnet50_baseline and efficientnet_b0 experiments in our comet mcp test benchmark?",
+        "question": "How do the batch sizes differ between the resnet50_baseline and efficientnet_b0 experiments in our comet mcp tests benchmark?",
         "answer": "The resnet50_baseline experiment used a batch size of 32, while the efficientnet_b0 experiment used a batch size of 64. The larger batch size for EfficientNet-B0 (64 vs 32) is appropriate since EfficientNet-B0 has fewer parameters (5M vs 25M) and can handle larger batches more efficiently. This also contributed to faster training (30 min vs 45 min)."
     },
     {
-        "question": "Out of the resnet50_baseline, resnet50_dropout, and efficientnet_b0 experiments in our comet-mcp-test classification study, which achieved the highest accuracy?",
+        "question": "Out of the resnet50_baseline, resnet50_dropout, and efficientnet_b0 experiments in our comet-mcp-tests classification study, which achieved the highest accuracy?",
         "answer": "The resnet50_dropout experiment achieved the highest accuracy at 92% validation accuracy, followed by resnet50_baseline at 88%, and efficientnet_b0 at 85%. The resnet50_dropout's superior performance was due to the dropout regularization (0.3) that prevented overfitting and improved generalization compared to the baseline."
     },
     {
-        "question": "What metrics did the resnet50_dropout experiment achieve at the end of training in our comet-mcp-test project?",
+        "question": "What metrics did the resnet50_dropout experiment achieve at the end of training in our comet-mcp-tests project?",
         "answer": "The resnet50_dropout experiment achieved excellent final metrics: Training accuracy: 96%, Training loss: 0.12, Validation accuracy: 92%, Validation loss: 0.20. The model showed the best balance between training and validation performance, with only a 4% gap indicating good generalization and minimal overfitting."
     },
     {
-        "question": "Give me a summary of how the efficientnet_b0 experiment performed in our comet-mcp-test image classification study?",
+        "question": "Give me a summary of how the efficientnet_b0 experiment performed in our comet-mcp-tests image classification study?",
         "answer": "The efficientnet_b0 experiment performed reasonably well with 85% validation accuracy and 0.28 validation loss. However, it showed signs of overfitting with a 9% gap between training (94%) and validation (85%) accuracy. The model converged well but the larger gap suggests it could benefit from more regularization or data augmentation."
     },
     {
-        "question": "Were there any problems with the efficientnet_b0 experiment converging in our comet-mcp-test classification project?",
+        "question": "Were there any problems with the efficientnet_b0 experiment converging in our comet-mcp-tests classification project?",
         "answer": "No, the efficientnet_b0 experiment converged well without any major problems. The training curves showed smooth, consistent improvement over 50 epochs. However, the model did show some overfitting with a 9% gap between training and validation accuracy, but this didn't prevent successful convergence to 85% validation accuracy."
     },
     {
-        "question": "What was the experimental configuration for the vit_base experiment in our comet-mcp-test image classification study?",
+        "question": "What was the experimental configuration for the vit_base experiment in our comet-mcp-tests image classification study?",
         "answer": "The vit_base experiment was configured as a Vision Transformer with: Learning rate: 0.0005 (lower than CNNs), Batch size: 16 (smaller due to memory requirements), Dropout: 0.1 (lower than CNNs), Weight decay: 0.01 (higher for regularization), 86M parameters (much larger than ResNet-50), Training time: 120 minutes (longer due to complexity)."
     },
     {
-        "question": "What were the model parameters for the vit_base experiment in our comet-mcp-test classification project?",
+        "question": "What were the model parameters for the vit_base experiment in our comet-mcp-tests classification project?",
         "answer": "The vit_base experiment has 86 million parameters, making it much larger than ResNet-50 (25M) or EfficientNet-B0 (5M). This large parameter count requires more data and longer training time (120 minutes vs 45 minutes for ResNet-50). The Vision Transformer architecture uses self-attention mechanisms instead of convolutional layers."
     },
     {
-        "question": "How does the vit_base experiment stack up against the resnet50_baseline experiment in our comet-mcp-test study?",
+        "question": "How does the vit_base experiment stack up against the resnet50_baseline experiment in our comet-mcp-tests study?",
         "answer": "The vit_base experiment underperformed compared to the resnet50_baseline experiment. vit_base achieved 82% validation accuracy vs resnet50_baseline's 88%. vit_base also showed severe overfitting with a 16% gap between training (98%) and validation (82%) accuracy, while resnet50_baseline had only a 7% gap. vit_base required much more training time (120 min vs 45 min) and parameters (86M vs 25M)."
     },
     {
-        "question": "What were the peak performance metrics for the vit_base experiment in our comet-mcp-test image classification project?",
+        "question": "What were the peak performance metrics for the vit_base experiment in our comet-mcp-tests image classification project?",
         "answer": "The vit_base experiment's peak performance metrics were: Training accuracy: 98%, Training loss: 0.08, Validation accuracy: 82%, Validation loss: 0.35. The model achieved very high training accuracy but poor generalization, with a large 16% gap between training and validation performance indicating severe overfitting."
     },
     {
-        "question": "Can you plot the learning progression for the vit_base experiment in our comet-mcp-test classification study?",
+        "question": "Can you plot the learning progression for the vit_base experiment in our comet-mcp-tests classification study?",
         "answer": "The vit_base experiment showed concerning learning progression with severe overfitting. Training accuracy increased rapidly to 98% while validation accuracy plateaued at 82%, creating a 16% gap. Training loss decreased to 0.08 but validation loss remained high at 0.35. The curves show the model memorizing training data without generalizing well to validation data."
     },
     {
-        "question": "Did the vit_base experiment experience overfitting issues in our comet-mcp-test image classification project?",
+        "question": "Did the vit_base experiment experience overfitting issues in our comet-mcp-tests image classification project?",
         "answer": "Yes, the vit_base experiment experienced severe overfitting issues. There was a massive 16% gap between training accuracy (98%) and validation accuracy (82%), indicating the model memorized the training data but failed to generalize. The validation loss (0.35) was much higher than training loss (0.08), which is a classic sign of overfitting."
     },
     {
-        "question": "What hyperparameter values were set for the resnet50_augmented experiment in our comet-mcp-test study?",
+        "question": "What hyperparameter values were set for the resnet50_augmented experiment in our comet-mcp-tests study?",
         "answer": "The resnet50_augmented experiment used: Learning rate: 0.0008 (slightly lower than baseline), Batch size: 32, Dropout: 0.2 (moderate regularization), Weight decay: 0.0001, Data augmentation: True (key difference from baseline), Epochs: 50, Training time: 50 minutes. The data augmentation was the main addition to improve generalization."
     },
     {
-        "question": "How does the resnet50_augmented experiment compare to the resnet50_baseline experiment in our comet-mcp-test classification project?",
+        "question": "How does the resnet50_augmented experiment compare to the resnet50_baseline experiment in our comet-mcp-tests classification project?",
         "answer": "The resnet50_augmented experiment significantly outperformed the resnet50_baseline experiment. Augmented achieved 94% validation accuracy vs baseline's 88%, and 0.18 validation loss vs 0.25. The data augmentation helped reduce overfitting, with only a 3% gap between training (97%) and validation (94%) accuracy compared to baseline's 7% gap."
     },
     {
-        "question": "What were the end results for the resnet50_augmented experiment in our comet-mcp-test image classification study?",
+        "question": "What were the end results for the resnet50_augmented experiment in our comet-mcp-tests image classification study?",
         "answer": "The resnet50_augmented experiment achieved excellent end results: Training accuracy: 97%, Training loss: 0.10, Validation accuracy: 94%, Validation loss: 0.18. The data augmentation strategy was highly successful, achieving the best validation accuracy among all experiments while maintaining good generalization with only a 3% training-validation gap."
     },
     {
-        "question": "How successful was the convergence for the resnet50_augmented experiment in our comet-mcp-test classification project?",
+        "question": "How successful was the convergence for the resnet50_augmented experiment in our comet-mcp-tests classification project?",
         "answer": "The resnet50_augmented experiment had very successful convergence. The training curves showed smooth, consistent improvement with excellent final performance (94% validation accuracy). The data augmentation helped the model converge to a better solution with improved generalization, achieving the highest validation accuracy among all experiments."
     },
     {
-        "question": "What setup was employed for the efficientnet_b3 experiment in our comet-mcp-test study?",
+        "question": "What setup was employed for the efficientnet_b3 experiment in our comet-mcp-tests study?",
         "answer": "The efficientnet_b3 experiment was configured with: Learning rate: 0.0005 (lower than B0), Batch size: 32 (smaller than B0), Dropout: 0.3 (higher regularization), Weight decay: 0.0001, 12M parameters (larger than B0's 5M), Training time: 60 minutes. The B3 variant is larger and more complex than B0, requiring more careful hyperparameter tuning."
     },
     {
-        "question": "How did the training evolve for the efficientnet_b3 experiment in our comet-mcp-test image classification project?",
+        "question": "How did the training evolve for the efficientnet_b3 experiment in our comet-mcp-tests image classification project?",
         "answer": "The efficientnet_b3 experiment showed slow convergence with gradual improvement over 50 epochs. Training loss decreased slowly from ~0.70 to 0.20, training accuracy increased to 93%, validation loss decreased to 0.30, and validation accuracy reached 87%. The larger model required more time to converge but achieved better performance than B0."
     },
     {
-        "question": "Between the vit_base and efficientnet_b3 experiments in our comet-mcp-test classification study, which was superior and what explains the difference?",
+        "question": "Between the vit_base and efficientnet_b3 experiments in our comet-mcp-tests classification study, which was superior and what explains the difference?",
         "answer": "The efficientnet_b3 experiment was superior to the vit_base experiment, achieving 87% validation accuracy vs vit_base's 82%. The difference is explained by vit_base's severe overfitting (16% training-validation gap) compared to efficientnet_b3's moderate overfitting (6% gap). efficientnet_b3 also required less training time (60 min vs 120 min) and fewer parameters (12M vs 86M) while achieving better generalization."
     },
     {
-        "question": "What accuracy scores did the resnet50_baseline experiment achieve in our comet-mcp-test image classification project?",
+        "question": "What accuracy scores did the resnet50_baseline experiment achieve in our comet-mcp-tests image classification project?",
         "answer": "The resnet50_baseline experiment achieved training accuracy of 95% and validation accuracy of 88%. The 7% gap between training and validation accuracy indicates some overfitting, but the model still achieved reasonable generalization performance on the validation set."
     },
     {
-        "question": "Can you visualize the loss progression for the resnet50_dropout experiment in our comet-mcp-test study?",
+        "question": "Can you visualize the loss progression for the resnet50_dropout experiment in our comet-mcp-tests study?",
         "answer": "The resnet50_dropout experiment showed excellent loss progression with smooth, consistent decrease. Training loss decreased from ~0.60 to 0.12, while validation loss decreased from ~0.65 to 0.20. The curves showed no oscillations or plateaus, indicating stable convergence. The small gap between training and validation loss (0.12 vs 0.20) demonstrates good generalization."
     },
     {
-        "question": "What batch size was configured for the efficientnet_b0 experiment in our comet-mcp-test classification project?",
+        "question": "What batch size was configured for the efficientnet_b0 experiment in our comet-mcp-tests classification project?",
         "answer": "The efficientnet_b0 experiment was configured with a batch size of 64. This larger batch size (compared to ResNet experiments' 32) was appropriate for EfficientNet-B0's smaller parameter count (5M vs 25M for ResNet-50), allowing for more efficient training and contributing to the faster training time of 30 minutes."
     },
     {
-        "question": "How do the experimental configurations differ between the vit_base and efficientnet_b3 experiments in our comet-mcp-test study?",
+        "question": "How do the experimental configurations differ between the vit_base and efficientnet_b3 experiments in our comet-mcp-tests study?",
         "answer": "Key differences: The vit_base experiment used learning rate 0.0005 vs efficientnet_b3's 0.0005, batch size 16 vs 32, dropout 0.1 vs 0.3, weight decay 0.01 vs 0.0001, parameters 86M vs 12M, training time 120 min vs 60 min. vit_base's lower dropout and higher weight decay contributed to its overfitting issues, while efficientnet_b3's higher dropout helped with regularization."
     },
     {
-        "question": "What performance indicators did the resnet50_augmented experiment reach in our comet-mcp-test image classification project?",
+        "question": "What performance indicators did the resnet50_augmented experiment reach in our comet-mcp-tests image classification project?",
         "answer": "The resnet50_augmented experiment reached excellent performance indicators: Training accuracy: 97%, Training loss: 0.10, Validation accuracy: 94%, Validation loss: 0.18. These were the best validation metrics among all experiments, with the data augmentation strategy successfully improving generalization and reducing overfitting."
     },
     {
-        "question": "Were there convergence difficulties with the efficientnet_b0 experiment in our comet-mcp-test classification study?",
+        "question": "Were there convergence difficulties with the efficientnet_b0 experiment in our comet-mcp-tests classification study?",
         "answer": "No, the efficientnet_b0 experiment converged without major difficulties. The training curves showed smooth, consistent improvement over 50 epochs. However, the model did exhibit some overfitting with a 9% gap between training (94%) and validation (85%) accuracy, but this didn't prevent successful convergence to 85% validation accuracy."
     },
     {
-        "question": "What learning rate was applied to the vit_base experiment in our comet-mcp-test image classification project?",
+        "question": "What learning rate was applied to the vit_base experiment in our comet-mcp-tests image classification project?",
         "answer": "The vit_base experiment used a learning rate of 0.0005, which is lower than the ResNet experiments (0.001). This lower learning rate was chosen because Vision Transformers typically require more careful tuning and slower learning rates due to their self-attention mechanisms and larger parameter count (86M)."
     },
     {
-        "question": "What effect did the hyperparameters have on the resnet50_dropout experiment in our comet-mcp-test study?",
+        "question": "What effect did the hyperparameters have on the resnet50_dropout experiment in our comet-mcp-tests study?",
         "answer": "The hyperparameters had a very positive effect on the resnet50_dropout experiment. The dropout regularization (0.3) was the key factor, preventing overfitting and improving generalization from 88% to 92% validation accuracy. The learning rate (0.001) and batch size (32) provided stable training, while the weight decay (0.0001) added additional regularization."
     },
     {
-        "question": "Out of all experiments in our comet-mcp-test image classification study (resnet50_baseline, resnet50_dropout, efficientnet_b0, vit_base, resnet50_augmented, efficientnet_b3), which was the top performer?",
+        "question": "Out of all experiments in our comet-mcp-tests image classification study (resnet50_baseline, resnet50_dropout, efficientnet_b0, vit_base, resnet50_augmented, efficientnet_b3), which was the top performer?",
         "answer": "The resnet50_augmented experiment was the top performer with 94% validation accuracy, followed by resnet50_dropout (92%), efficientnet_b3 (87%), efficientnet_b0 (85%), resnet50_baseline (88%), and vit_base (82%). The data augmentation strategy in resnet50_augmented provided the best balance of performance and generalization."
     },
     {
-        "question": "What outcomes did the efficientnet_b3 experiment produce during training in our comet-mcp-test classification project?",
+        "question": "What outcomes did the efficientnet_b3 experiment produce during training in our comet-mcp-tests classification project?",
         "answer": "The efficientnet_b3 experiment produced good outcomes with 87% validation accuracy and 0.30 validation loss. The model showed slow but steady convergence over 50 epochs, achieving better performance than efficientnet_b0 (85%) due to its larger capacity (12M vs 5M parameters). The training was stable with moderate overfitting (6% gap between training and validation accuracy)."
     },
     {
-        "question": "Can you show how the resnet50_augmented experiment converged in our comet-mcp-test image classification study?",
+        "question": "Can you show how the resnet50_augmented experiment converged in our comet-mcp-tests image classification study?",
         "answer": "The resnet50_augmented experiment showed excellent convergence with smooth, consistent improvement. Training loss decreased from ~0.55 to 0.10, training accuracy increased to 97%, validation loss decreased to 0.18, and validation accuracy reached 94%. The data augmentation helped maintain good generalization with only a 3% gap between training and validation performance."
     },
     {
-        "question": "What was the model setup for the resnet50_baseline experiment in our comet-mcp-test classification project?",
+        "question": "What was the model setup for the resnet50_baseline experiment in our comet-mcp-tests classification project?",
         "answer": "The resnet50_baseline experiment used ResNet-50 architecture with 25M parameters, learning rate 0.001, batch size 32, no dropout (0.0), weight decay 0.0001, and training time of 45 minutes. This was the baseline configuration without any regularization techniques like dropout or data augmentation."
     },
     {
-        "question": "How do the final results compare between the vit_base and efficientnet_b0 experiments in our comet-mcp-test study?",
+        "question": "How do the final results compare between the vit_base and efficientnet_b0 experiments in our comet-mcp-tests study?",
         "answer": "The efficientnet_b0 experiment outperformed the vit_base experiment with 85% validation accuracy vs 82%. efficientnet_b0 also had better generalization with a 9% training-validation gap vs vit_base's 16% gap. efficientnet_b0 required much less training time (30 min vs 120 min) and fewer parameters (5M vs 86M) while achieving better performance."
     },
     {
-        "question": "What were the optimal accuracy and loss scores for the resnet50_dropout experiment in our comet-mcp-test image classification project?",
+        "question": "What were the optimal accuracy and loss scores for the resnet50_dropout experiment in our comet-mcp-tests image classification project?",
         "answer": "The resnet50_dropout experiment achieved optimal scores of: Training accuracy: 96%, Training loss: 0.12, Validation accuracy: 92%, Validation loss: 0.20. These were excellent results with good generalization (only 4% gap between training and validation accuracy) and no signs of overfitting, making it one of the best performing experiments."
     },
     {
-        "question": "Was overfitting observed in the efficientnet_b3 experiment during training in our comet-mcp-test classification study?",
+        "question": "Was overfitting observed in the efficientnet_b3 experiment during training in our comet-mcp-tests classification study?",
         "answer": "Yes, the efficientnet_b3 experiment showed moderate overfitting with a 6% gap between training accuracy (93%) and validation accuracy (87%). While not as severe as vit_base's 16% gap, the overfitting was still noticeable. The model achieved good performance but could benefit from additional regularization techniques like data augmentation or higher dropout rates."
     },
     {
-        "question": "What parameter values were chosen for the vit_base experiment in our comet-mcp-test image classification project?",
+        "question": "What parameter values were chosen for the vit_base experiment in our comet-mcp-tests image classification project?",
         "answer": "The vit_base experiment used these parameter values: Learning rate: 0.0005, Batch size: 16, Dropout: 0.1, Weight decay: 0.01, Model parameters: 86M, Training time: 120 minutes. The lower learning rate and higher weight decay were chosen for the Vision Transformer architecture, but the low dropout (0.1) contributed to the severe overfitting observed."
     },
     {
-        "question": "What explains the performance gap between the resnet50_baseline and resnet50_augmented experiments in our comet-mcp-test study?",
+        "question": "What explains the performance gap between the resnet50_baseline and resnet50_augmented experiments in our comet-mcp-tests study?",
         "answer": "The 6% performance gap (88% vs 94% validation accuracy) between the resnet50_baseline and resnet50_augmented experiments is explained by the data augmentation strategy. Data augmentation helped resnet50_augmented generalize better by providing more diverse training examples, reducing overfitting from a 7% to 3% training-validation gap, and improving the model's ability to handle unseen data."
     },
     {
-        "question": "What conclusions and suggestions can be drawn from the efficientnet_b0 experiment in our comet-mcp-test image classification project?",
+        "question": "What conclusions and suggestions can be drawn from the efficientnet_b0 experiment in our comet-mcp-tests image classification project?",
         "answer": "The efficientnet_b0 experiment showed that EfficientNet architectures can achieve reasonable performance (85% validation accuracy) with fewer parameters (5M vs 25M for ResNet-50) and faster training (30 min vs 45 min). However, the 9% overfitting gap suggests the model could benefit from: 1) Higher dropout rates, 2) Data augmentation, 3) More regularization, or 4) Longer training with learning rate scheduling to improve generalization."
     },
     {
