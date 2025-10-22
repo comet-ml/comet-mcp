@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from comet_mcp.utils import format_datetime
 from comet_mcp.session import get_comet_api, get_session_context
+from comet_mcp.cache import cached
 
 
 def _get_state(metadata):
@@ -20,6 +21,7 @@ def _get_state(metadata):
     return "finished"
 
 
+@cached(ttl_seconds=300)  # Cache for 5 minutes
 def list_experiments(
     workspace: Optional[str] = None,
     project_name: Optional[str] = None,
@@ -93,6 +95,7 @@ def list_experiments(
         return result
 
 
+@cached(ttl_seconds=3600)  # Cache for 1 hour
 def get_default_workspace() -> str:
     """
     Get the default workspace name for this user.
@@ -302,11 +305,12 @@ def get_experiment_details(experiment_id: str) -> Dict[str, Any]:
         }
 
 
+@cached(ttl_seconds=1800)  # Cache for 30 minutes (projects change rarely)
 def list_projects(
     workspace: Optional[str] = None,
     prefix: Optional[str] = None,
-    limit: int = 10,
-    offset: int = 0,
+    page: Optional[int] = 1,
+    page_size: Optional[int] = 10,
 ) -> Dict[str, Any]:
     """
     List project names in a Comet ML workspace with filtering and pagination support.
@@ -318,8 +322,8 @@ def list_projects(
     Args:
         workspace: Workspace name (optional, will lookup the default workspace if not provided)
         prefix: Filter projects by name prefix (optional, case-insensitive)
-        limit: Maximum number of projects to return per page (default: 10, max: 100)
-        offset: Number of projects to skip for pagination (default: 0)
+        page: Page number to retrieve (default: 1, starts from 1)
+        page_size: Number of projects to return per page (default: 10, max: 100)
 
     Returns:
         Dictionary containing:
@@ -328,8 +332,8 @@ def list_projects(
         - total_count: Total number of projects in the workspace
         - filtered_count: Number of projects matching the prefix filter (if prefix provided)
         - page_info: Dictionary with pagination metadata:
-          - limit: Maximum number of projects per page
-          - offset: Number of projects skipped
+          - page: Current page number
+          - page_size: Number of projects per page
           - has_more: Boolean indicating if more results are available
           - returned_count: Actual number of projects returned in this page
     """
@@ -337,7 +341,7 @@ def list_projects(
         if workspace:
             target_workspace = workspace
         else:
-            target_workspace = api.get_default_workspace()
+            target_workspace = get_default_workspace()
 
         # Get all projects from the workspace
         all_projects = sorted(api.get_projects(workspace=target_workspace))
@@ -357,12 +361,12 @@ def list_projects(
         filtered_count = len(filtered_projects)
 
         # Apply pagination
-        # Ensure limit doesn't exceed maximum
-        limit = min(limit, 100)
+        # Ensure page_size doesn't exceed maximum
+        page_size = min(page_size, 100)
 
         # Calculate pagination bounds
-        start_idx = offset
-        end_idx = offset + limit
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
 
         # Get the page of results
         page_projects = filtered_projects[start_idx:end_idx]
@@ -376,8 +380,8 @@ def list_projects(
             "total_count": total_count,
             "filtered_count": filtered_count,
             "page_info": {
-                "limit": limit,
-                "offset": offset,
+                "page": page,
+                "page_size": page_size,
                 "has_more": has_more,
                 "returned_count": len(page_projects),
             },
@@ -407,7 +411,7 @@ def get_project_details(project_name: str, workspace: Optional[str]) -> Dict[str
         if workspace:
             target_workspace = workspace
         else:
-            target_workspace = api.get_default_workspace()
+            target_workspace = get_default_workspace()
 
         project_details = api.get_project(target_workspace, project_name)
         return {
@@ -418,6 +422,7 @@ def get_project_details(project_name: str, workspace: Optional[str]) -> Dict[str
         }
 
 
+@cached(ttl_seconds=600)  # Cache for 10 minutes
 def get_session_info() -> Dict[str, Any]:
     """
     Get information about the current Comet ML session.
@@ -443,7 +448,7 @@ def get_session_info() -> Dict[str, Any]:
 
     try:
         with get_comet_api() as api:
-            workspace = api.get_default_workspace()
+            workspace = get_default_workspace()
 
             # Try to get user info
             try:
@@ -499,7 +504,7 @@ def get_all_experiments_summary(
         if workspace:
             target_workspace = workspace
         else:
-            target_workspace = api.get_default_workspace()
+            target_workspace = get_default_workspace()
 
         # Get experiments for the specific project; could be paged
         experiments = api._get_project_experiments(
@@ -552,7 +557,7 @@ def validate_project(
             if workspace:
                 target_workspace = workspace
             else:
-                target_workspace = api.get_default_workspace()
+                target_workspace = get_default_workspace()
 
             # Try to get project details - this will fail if project doesn't exist
             project_details = api.get_project(target_workspace, project_name)
@@ -721,9 +726,7 @@ def get_experiment_parameters(experiment_id: str) -> Dict[str, Any]:
         - id: Unique experiment identifier
         - name: Human-readable experiment name
         - parameters: Dictionary mapping parameter names to their values
-        - hyperparameters: Dictionary of hyperparameter settings
-        - model_info: Dictionary containing model-related configuration
-        - training_config: Dictionary containing training-related settings
+        - parameter_count: Total number of parameters found
     """
     with get_comet_api() as api:
         experiment = api.get_experiment_by_key(experiment_id)
@@ -734,48 +737,57 @@ def get_experiment_parameters(experiment_id: str) -> Dict[str, Any]:
         # Get parameters summary
         params_summary = experiment.get_parameters_summary()
         parameters = {}
-        hyperparameters = {}
-        model_info = {}
-        training_config = {}
 
         if params_summary:
             for param in params_summary:
                 param_name = param["name"]
                 param_value = param.get("valueCurrent", "")
-
-                # Categorize parameters
-                if (
-                    "model" in param_name.lower()
-                    or "architecture" in param_name.lower()
-                ):
-                    model_info[param_name] = param_value
-                elif any(
-                    keyword in param_name.lower()
-                    for keyword in [
-                        "learning_rate",
-                        "lr",
-                        "batch_size",
-                        "epochs",
-                        "optimizer",
-                        "loss",
-                    ]
-                ):
-                    training_config[param_name] = param_value
-                elif any(
-                    keyword in param_name.lower()
-                    for keyword in ["hyperparameter", "hp_", "param_", "config"]
-                ):
-                    hyperparameters[param_name] = param_value
-                else:
-                    parameters[param_name] = param_value
+                parameters[param_name] = param_value
 
         return {
             "id": experiment.id,
             "name": experiment.name,
             "parameters": parameters,
-            "hyperparameters": hyperparameters,
-            "model_info": model_info,
-            "training_config": training_config,
+            "parameter_count": len(parameters),
+        }
+
+
+def _get_cache_info() -> Dict[str, Any]:
+    """
+    Get information about the current cache state.
+
+    Returns:
+        Dictionary containing cache statistics and session information.
+    """
+    from comet_mcp.cache import get_cache_info
+
+    return get_cache_info()
+
+
+def _clear_cache(func_name: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Clear cache entries.
+
+    Args:
+        func_name: Optional function name to clear cache for. If None, clears all caches.
+
+    Returns:
+        Dictionary with operation status.
+    """
+    from comet_mcp.cache import cache_invalidate
+
+    try:
+        cache_invalidate(func_name)
+        return {
+            "status": "success",
+            "message": f"Cache cleared for {'all functions' if func_name is None else func_name}",
+            "func_name": func_name,
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to clear cache: {str(e)}",
+            "func_name": func_name,
         }
 
 
