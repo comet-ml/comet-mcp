@@ -195,7 +195,6 @@ Available metrics from [opik.evaluation.metrics](https://www.comet.com/docs/opik
    - TrajectoryAccuracy
    - Usefulness
    - UserFrustrationMetric
-```
 
 For many metrics, we also need to know how to map the input of the
 metric scoring method to the correct answer. For example, the
