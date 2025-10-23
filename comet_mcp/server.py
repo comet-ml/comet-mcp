@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Simple demo MCP server for testing the multi-server client.
-This server provides basic math operations as tools.
+Comet ML MCP Server - Model Context Protocol server for Comet ML integration.
+Provides tools for experiment management, project operations, and data analysis.
 """
 
 import argparse
