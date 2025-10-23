@@ -245,7 +245,7 @@ and [many others](https://www.comet.com/docs/opik/agent_optimization/opik_optimi
 To find a better prompt using the `FewShotBayesianOptimizer` (using the algorithm defaults) you can:
 
 ```shell
-ez-mcp-eval \
+ez-mcp-optimize \
    --prompt PROMPT.md \
    --dataset comet-mcp-tests-dataset \
    --input question \
