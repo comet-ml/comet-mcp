@@ -9,6 +9,21 @@ from datetime import datetime
 from typing import Any, Dict, List, Callable, Optional, Union
 from mcp import Tool
 
+import comet_ml
+import requests
+
+
+def supports_paged_queries():
+    has_api_search = hasattr(comet_ml.API, "search")
+    if has_api_search:
+        api = comet_ml.API()
+        base_url = api._client.base_url
+        search_endpoint = f"{base_url}experiments/search"
+        response = requests.post(search_endpoint, json={}, timeout=5)
+        return response.status_code != 404
+    else:
+        return False
+
 
 class ToolRegistry:
     """Registry for managing MCP tools with automatic parameter generation."""
@@ -75,10 +90,12 @@ class ToolRegistry:
 
             # Create the property schema
             property_schema = {"type": param_type, "description": description}
-            
+
             # Handle array types - add items schema
             if param_type == "array":
-                property_schema["items"] = self._get_array_items_schema(param.annotation)
+                property_schema["items"] = self._get_array_items_schema(
+                    param.annotation
+                )
 
             properties[param_name] = property_schema
 
@@ -123,16 +140,13 @@ class ToolRegistry:
         if hasattr(annotation, "__args__") and annotation.__args__:
             # Handle List[SomeType] - get the type of items
             item_type = annotation.__args__[0]
-            
+
             # Handle nested List types like List[List[float]]
             if hasattr(item_type, "__origin__") and item_type.__origin__ is list:
                 # For List[List[SomeType]], return array of arrays
                 if item_type.__args__:
                     inner_type = self._get_json_type(item_type.__args__[0])
-                    return {
-                        "type": "array",
-                        "items": {"type": inner_type}
-                    }
+                    return {"type": "array", "items": {"type": inner_type}}
                 else:
                     return {"type": "array", "items": {"type": "string"}}
             else:

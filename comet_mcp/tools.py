@@ -6,9 +6,17 @@ These tools require access to comet_ml.API() singleton.
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from comet_mcp.utils import format_datetime
+from comet_mcp.utils import format_datetime, supports_paged_queries
 from comet_mcp.session import get_comet_api, get_session_context
 from comet_mcp.cache import cached
+
+
+SUPPORTS_PAGED_QUERIES = supports_paged_queries()
+
+if not SUPPORTS_PAGED_QUERIES:
+    print(
+        "WARNING: running without paged queries; update comet_ml SDK and backend to fix"
+    )
 
 
 def _get_state(metadata):
@@ -52,14 +60,12 @@ def list_experiments(
         - description: Optional experiment description if available
     """
     with get_comet_api() as api:
-        # Determine target workspace
         if workspace:
             target_workspace = workspace
         else:
             target_workspace = api.get_default_workspace()
 
-        # Get experiments for the specified workspace and project
-        if project_name:
+        if SUPPORTS_PAGED_QUERIES:
             experiments = api.get_experiments(
                 workspace=target_workspace,
                 project_name=project_name,
@@ -69,13 +75,27 @@ def list_experiments(
                 sort_order=sort_order,
             )
         else:
+            # Get all experiments when paged queries are not supported
             experiments = api.get_experiments(
                 workspace=target_workspace,
-                page=page,
-                page_size=page_size,
-                sort_by=sort_by,
-                sort_order=sort_order,
+                project_name=project_name,
             )
+
+            # Apply manual sorting if requested
+            if sort_by and sort_order:
+                if sort_by in ["startTime", "endTime"]:
+                    # Sort experiments by the specified field
+                    reverse = sort_order.lower() == "desc"
+                    experiments.sort(
+                        key=lambda exp: getattr(exp, f"{sort_by}_server_timestamp", 0),
+                        reverse=reverse,
+                    )
+
+            # Apply manual pagination
+            if page and page_size:
+                start_idx = (page - 1) * page_size
+                end_idx = start_idx + page_size
+                experiments = experiments[start_idx:end_idx]
 
         if not experiments:
             return []

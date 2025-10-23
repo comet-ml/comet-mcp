@@ -31,6 +31,7 @@ class TestListExperiments:
         session_context.initialize()
         # Clear cache to avoid test interference
         from comet_mcp.tools import _clear_cache
+
         _clear_cache()
 
     @patch("comet_mcp.tools.get_comet_api")
@@ -83,7 +84,14 @@ class TestListExperiments:
         assert exp2["description"] is None
 
         # Verify API was called correctly
-        mock_api.get_experiments.assert_called_once_with(workspace="default-workspace", page=1, page_size=10, sort_by=None, sort_order=None)
+        mock_api.get_experiments.assert_called_once_with(
+            workspace="default-workspace",
+            project_name=None,
+            page=1,
+            page_size=10,
+            sort_by=None,
+            sort_order=None,
+        )
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_list_experiments_with_workspace(self, mock_get_api):
@@ -96,7 +104,14 @@ class TestListExperiments:
 
         assert isinstance(result, list)
         assert len(result) == 0
-        mock_api.get_experiments.assert_called_once_with(workspace="test-workspace", page=1, page_size=10, sort_by=None, sort_order=None)
+        mock_api.get_experiments.assert_called_once_with(
+            workspace="test-workspace",
+            project_name=None,
+            page=1,
+            page_size=10,
+            sort_by=None,
+            sort_order=None,
+        )
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_list_experiments_empty_result(self, mock_get_api):
@@ -122,6 +137,39 @@ class TestListExperiments:
 
         assert "API connection failed" in str(exc_info.value)
 
+    @patch("comet_mcp.tools.SUPPORTS_PAGED_QUERIES", False)
+    @patch("comet_mcp.tools.get_comet_api")
+    def test_list_experiments_manual_pagination_sorting(self, mock_get_api):
+        """Test manual pagination and sorting when SUPPORTS_PAGED_QUERIES is False."""
+        # Mock API response with multiple experiments
+        mock_api = Mock()
+        mock_api.get_default_workspace.return_value = "default-workspace"
+
+        # Create simple mock experiments
+        mock_experiments = []
+        for i in range(5):
+            exp = Mock()
+            exp.id = f"exp{i}"
+            exp.name = f"Experiment {i}"
+            exp.get_state.return_value = "completed"
+            exp.description = f"Description {i}"
+            mock_experiments.append(exp)
+
+        mock_api.get_experiments.return_value = mock_experiments
+        mock_get_api.return_value.__enter__.return_value = mock_api
+
+        # Test pagination - get page 2 with page_size 2
+        result = list_experiments(page=2, page_size=2)
+
+        assert isinstance(result, list)
+        assert len(result) == 2  # Should get 2 experiments for page 2
+
+        # Test that API was called without pagination/sorting parameters
+        # (since we're simulating the case where paged queries are not supported)
+        mock_api.get_experiments.assert_called_with(
+            workspace="default-workspace", project_name=None
+        )
+
 
 class TestGetExperimentDetails:
     """Test cases for get_experiment_details tool."""
@@ -132,6 +180,7 @@ class TestGetExperimentDetails:
         session_context.initialize()
         # Clear cache to avoid test interference
         from comet_mcp.tools import _clear_cache
+
         _clear_cache()
 
     @patch("comet_mcp.tools.get_comet_api")
@@ -241,6 +290,7 @@ class TestListProjects:
         session_context.initialize()
         # Clear cache to avoid test interference
         from comet_mcp.tools import _clear_cache
+
         _clear_cache()
 
     @patch("comet_mcp.tools.get_comet_api")
@@ -312,7 +362,9 @@ class TestListProjects:
         mock_api.get_default_workspace.return_value = "default-workspace"
         mock_get_api.return_value.__enter__.return_value = mock_api
 
-        result = list_projects(page=3, page_size=10)  # page 3 with 10 per page = offset 20
+        result = list_projects(
+            page=3, page_size=10
+        )  # page 3 with 10 per page = offset 20
 
         assert isinstance(result, dict)
         assert result["workspace"] == "default-workspace"
@@ -342,7 +394,9 @@ class TestListProjects:
         mock_api.get_default_workspace.return_value = "default-workspace"
         mock_get_api.return_value.__enter__.return_value = mock_api
 
-        result = list_projects(prefix="test", page=2, page_size=5)  # page 2 with 5 per page = offset 5
+        result = list_projects(
+            prefix="test", page=2, page_size=5
+        )  # page 2 with 5 per page = offset 5
 
         assert isinstance(result, dict)
         assert result["workspace"] == "default-workspace"
@@ -491,7 +545,10 @@ class TestGetSessionInfo:
         # Due to cache clearing, this might still show as initialized
         assert result["initialized"] in [True, False]
         assert result["api_status"] in ["Not initialized", "Connected"]
-        assert result["error"] is None or result["error"] == "Comet ML session is not initialized."
+        assert (
+            result["error"] is None
+            or result["error"] == "Comet ML session is not initialized."
+        )
 
 
 class TestStructuredDataTypes:
@@ -503,6 +560,7 @@ class TestStructuredDataTypes:
         session_context.initialize()
         # Clear cache to avoid test interference
         from comet_mcp.tools import _clear_cache
+
         _clear_cache()
 
     @patch("comet_mcp.tools.get_comet_api")
@@ -649,6 +707,7 @@ class TestValidateProject:
         session_context.initialize()
         # Clear cache to avoid test interference
         from comet_mcp.tools import _clear_cache
+
         _clear_cache()
 
     @patch("comet_mcp.tools.get_comet_api")
@@ -718,6 +777,7 @@ class TestGetAllExperimentsSummary:
         session_context.initialize()
         # Clear cache to avoid test interference
         from comet_mcp.tools import _clear_cache
+
         _clear_cache()
 
     @patch("comet_mcp.tools.get_comet_api")
@@ -736,12 +796,12 @@ class TestGetAllExperimentsSummary:
                 "startTimeMillis": 1704110400000,  # 2024-01-01T12:00:00
             },
             "exp2": {
-                "experimentKey": "exp2", 
+                "experimentKey": "exp2",
                 "experimentName": "Project Experiment 2",
                 "running": True,
                 "hasCrashed": False,
                 "startTimeMillis": 1704196800000,  # 2024-01-02T12:00:00
-            }
+            },
         }
         mock_api._get_project_experiments.return_value = mock_experiments
         mock_get_api.return_value.__enter__.return_value = mock_api
@@ -832,6 +892,7 @@ class TestUpdatedListExperiments:
         session_context.initialize()
         # Clear cache to avoid test interference
         from comet_mcp.tools import _clear_cache
+
         _clear_cache()
 
     @patch("comet_mcp.tools.get_comet_api")
@@ -859,7 +920,12 @@ class TestUpdatedListExperiments:
 
         # Verify API was called with project filter
         mock_api.get_experiments.assert_called_once_with(
-            workspace="default-workspace", project_name="smoke-test", page=1, page_size=10, sort_by=None, sort_order=None
+            workspace="default-workspace",
+            project_name="smoke-test",
+            page=1,
+            page_size=10,
+            sort_by=None,
+            sort_order=None,
         )
 
     @patch("comet_mcp.tools.get_comet_api")
@@ -874,7 +940,12 @@ class TestUpdatedListExperiments:
         assert isinstance(result, list)
         assert len(result) == 0
         mock_api.get_experiments.assert_called_once_with(
-            workspace="test-workspace", project_name="smoke-test", page=1, page_size=10, sort_by=None, sort_order=None
+            workspace="test-workspace",
+            project_name="smoke-test",
+            page=1,
+            page_size=10,
+            sort_by=None,
+            sort_order=None,
         )
 
 
