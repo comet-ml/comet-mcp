@@ -23,22 +23,16 @@ A comprehensive Model Context Protocol (MCP) server that provides tools for inte
 pip install comet-mcp --upgrade
 ```
 
-### Docker Installation
+### Docker Installation (Alternative)
 
-You can run the Comet MCP server using Docker for easy deployment and isolation. The Docker setup uses SSE (Server-Sent Events) transport, which is optimized for containerized environments as it doesn't require interactive terminal connections.
+You can run the Comet MCP server using Docker to avoid installing Python dependencies on your system.
 
-1. **Set up environment variables:**
+1. **Build the Docker image:**
    ```bash
-   export COMET_API_KEY=your_comet_api_key_here
-   export COMET_WORKSPACE=your_workspace_name  # Optional
+   docker build -t comet-mcp .
    ```
 
-2. **Run with Docker Compose:**
-   ```bash
-   docker-compose up
-   ```
-
-The server will be available at `http://localhost:8000` with health check at `http://localhost:8000/health`.
+2. **Configure your MCP client** (see Usage section below for configuration examples)
 
 ## Configuration
 
@@ -97,6 +91,7 @@ The server will:
 
 Create a configuration for your AI system. For example:
 
+**Local Installation:**
 ```json
 {
   "servers": [
@@ -112,9 +107,38 @@ Create a configuration for your AI system. For example:
 }
 ```
 
+**Docker Installation (Alternative):**
+```json
+{
+  "mcpServers": {
+    "comet-mcp": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "COMET_API_KEY",
+        "-e",
+        "COMET_WORKSPACE",
+        "comet-mcp",
+        "comet-mcp",
+        "--transport",
+        "stdio"
+      ],
+      "env": {
+        "COMET_API_KEY": "your_api_key_here",
+        "COMET_WORKSPACE": "your_workspace_name"
+      }
+    }
+  }
+}
+```
+
 `comet-mcp` supports "stdio" and "sse" transport modes.
 
-## 3. Command line options
+
+## 4. Command line options
 
 ```
 usage: comet-mcp [-h] [--transport {stdio,sse}] [--host HOST] [--port PORT]
@@ -129,7 +153,7 @@ options:
   --port PORT           Port for SSE transport (default: 8000)
 ```
 
-## 4. Intergration with Opik for use, testing, and optimization
+## 5. Integration with Opik for use, testing, and optimization
 
 For complete details on testing this (or any MCP server) see [examples/README](https://github.com/comet-ml/comet-mcp/blob/main/examples/README.md).
 
