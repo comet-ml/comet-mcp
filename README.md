@@ -23,6 +23,23 @@ A comprehensive Model Context Protocol (MCP) server that provides tools for inte
 pip install comet-mcp --upgrade
 ```
 
+### Docker Installation
+
+You can run the Comet MCP server using Docker for easy deployment and isolation. The Docker setup uses SSE (Server-Sent Events) transport, which is optimized for containerized environments as it doesn't require interactive terminal connections.
+
+1. **Set up environment variables:**
+   ```bash
+   export COMET_API_KEY=your_comet_api_key_here
+   export COMET_WORKSPACE=your_workspace_name  # Optional
+   ```
+
+2. **Run with Docker Compose:**
+   ```bash
+   docker-compose up
+   ```
+
+The server will be available at `http://localhost:8000` with health check at `http://localhost:8000/health`.
+
 ## Configuration
 
 The server uses standard comet_ml configuration:

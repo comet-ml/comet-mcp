@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  comet-mcp:
+    build: .
+    container_name: comet-mcp-server
+    ports:
+      - "8000:8000"  # SSE transport port
+    environment:
+      # Required: Comet ML API configuration
+      - COMET_API_KEY=${COMET_API_KEY}
+      # Optional: Set default workspace
+      - COMET_WORKSPACE=${COMET_WORKSPACE:-}
+    # SSE transport (optimized for Docker)
+    command: ["comet-mcp", "--transport", "sse", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Uncomment for development with volume mounting
+    # volumes:
+    #   - ./comet_mcp:/app/comet_mcp:ro
