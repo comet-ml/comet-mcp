@@ -6,6 +6,7 @@ These tools require access to comet_ml.API() singleton.
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import sys
 from comet_mcp.utils import format_datetime, supports_paged_queries
 from comet_mcp.session import get_comet_api, get_session_context
 from comet_mcp.cache import cached
@@ -15,7 +16,8 @@ SUPPORTS_PAGED_QUERIES = supports_paged_queries()
 
 if not SUPPORTS_PAGED_QUERIES:
     print(
-        "WARNING: running without paged queries; update comet_ml SDK and backend to fix"
+        "WARNING: running without paged queries; update comet_ml SDK and backend to fix",
+        file=sys.stderr
     )
 
 
