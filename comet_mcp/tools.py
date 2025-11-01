@@ -67,6 +67,9 @@ def list_experiments(
         else:
             target_workspace = api.get_default_workspace()
 
+        if project_name is None:
+            project_name = "general"
+
         if SUPPORTS_PAGED_QUERIES:
             experiments = api.get_experiments(
                 workspace=target_workspace,
@@ -102,9 +105,9 @@ def list_experiments(
         if not experiments:
             return []
 
-        result = []
+        result = {"workspace": target_workspace, "project": project_name, "experiments": []}
         for exp in experiments:
-            result.append(
+            result["experiments"].append(
                 {
                     "id": exp.id,
                     "name": exp.name,
