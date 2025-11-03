@@ -299,7 +299,7 @@ def levenshtein_ratio_metric(dataset_item, llm_output):
 When you call the optimization command, you don't need `--output` but you
 do need `--metrics-file` and the new `--metrics` name.
 
-For the `HierarchicalReflectiveOptimizer` we also need to provide
+For the `HierarchicalReflectiveOptimizer` class we also need to provide
 the optimizing algorithm itself with a more powerful model:
 
 ```shell
@@ -307,8 +307,8 @@ ez-mcp-optimize \
    --prompt PROMPT.md \
    --dataset comet-mcp-tests-dataset \
    --input question \
-   --metric LevenshteinRatio \
-   --output reference=answer \
+   --metric levenshtein_ratio_metric \
+   --metrics-file my_metrics.py \
    --optimizer HierarchicalReflectiveOptimizer \
    --class-kwargs '{"model": "openai/gpt-4o", "model_parameters": {"temperature": 0.7, "max_tokens": 4096}}'
 ```
