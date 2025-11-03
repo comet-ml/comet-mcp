@@ -161,7 +161,7 @@ You can look over the resulting answers in the [Opik UI](https://www.comet.com/d
 
 But this isn't completely useful. It would be more useful if we knew which of the
 generated answers was correct. For this, we need an [Opik Metric](https://www.comet.com/docs/opik/). There are a bunch
-built in:
+built in metrics for evaluation:
 
 ```python
 ez-mcp-eval --list-metrics
@@ -216,8 +216,8 @@ ez-mcp-eval \
    --prompt PROMPT.md \
    --dataset comet-mcp-tests-dataset \
    --input question \
-   --output reference=answer \
-   --metric LevenshteinRatio
+   --metric LevenshteinRatio \
+   --output reference=answer
 ```
 
 Now we can see the metric values for each item in the dataset.
@@ -242,6 +242,7 @@ There are a number of algorithms you can try, including:
 
 and [many others](https://www.comet.com/docs/opik/agent_optimization/opik_optimizer/quickstart).
 
+
 To find a better prompt using the `FewShotBayesianOptimizer` (using the algorithm defaults) you can:
 
 ```shell
@@ -249,11 +250,67 @@ ez-mcp-optimize \
    --prompt PROMPT.md \
    --dataset comet-mcp-tests-dataset \
    --input question \
-   --output reference=answer \
    --metric LevenshteinRatio \
+   --output reference=answer \
    --optimizer FewShotBayesianOptimizer
 ```
 
 This will create examples/demonstrations to better perform on this dataset.
+
+### Advanced Metrics
+
+In some cases you may want to create a custom metric. For example, the
+`HierarchicalReflectiveOptimizer` requires a "reason" for a particular
+score. In this case, you can create a function that takes
+"dataset_item" and "output" and do not need to pass in the `--output`
+mapping as before. Inside your function definition, you will use the
+dataset_item expected output field name for the comparison.  In our very
+specific case, the dataset_item is called "answer".
+
+Put the following in a file named "my_metrics.py":
+
+```python
+# my_metrics.py
+from Levenshtein import distance as levenshtein_distance
+from opik.evaluation.metrics.score_result import ScoreResult
+
+def levenshtein_ratio_metric(dataset_item, llm_output):
+    # Based on dataset:
+    reference = dataset_item["answer"]
+
+    distance = levenshtein_distance(reference, llm_output)
+    max_len = max(len(reference), len(output))
+    if max_len == 0:
+        ratio = 1.0
+        reason = "The output is identical to what is expected"
+    else:
+        ratio = 1.0 - (distance / max_len)
+        reason = "There are some differences in what is expected"
+
+    return ScoreResult(
+        name="levenshtein_ratio_metric",
+        reason=reason,
+        value=ratio,
+        metadata=None,
+        scoring_failed=False
+    )
+```
+
+When you call the optimization command, you don't need `--output` but you
+do need `--metrics-file` and the new `--metrics` name.
+
+For the `HierarchicalReflectiveOptimizer` we also need to provide
+the optimizing algorithm itself with a more powerful model:
+
+```shell
+ez-mcp-optimize \
+   --prompt PROMPT.md \
+   --dataset comet-mcp-tests-dataset \
+   --input question \
+   --metric LevenshteinRatio \
+   --output reference=answer \
+   --optimizer HierarchicalReflectiveOptimizer \
+   --class-kwargs '{"model": "openai/gpt-4o", "model_parameters": {"temperature": 0.7, "max_tokens": 4096}}'
+```
 
 There are many options available via the [ez-mcp-toolbox](https://pypi.org/project/ez-mcp-toolbox/) command-line tools. And much more power using the [Opik UI](https://www.comet.com/docs/opik/) and [SDK](https://www.comet.com/docs/opik/).
