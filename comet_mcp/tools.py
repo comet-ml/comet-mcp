@@ -10,6 +10,7 @@ import sys
 from comet_mcp.utils import format_datetime, supports_paged_queries
 from comet_mcp.session import get_comet_api, get_session_context
 from comet_mcp.cache import cached
+from comet_ml.query import Tag
 
 
 SUPPORTS_PAGED_QUERIES = supports_paged_queries()
@@ -17,7 +18,7 @@ SUPPORTS_PAGED_QUERIES = supports_paged_queries()
 if not SUPPORTS_PAGED_QUERIES:
     print(
         "WARNING: running without paged queries; update comet_ml SDK and backend to fix",
-        file=sys.stderr
+        file=sys.stderr,
     )
 
 
@@ -105,7 +106,11 @@ def list_experiments(
         if not experiments:
             return []
 
-        result = {"workspace": target_workspace, "project": project_name, "experiments": []}
+        result = {
+            "workspace": target_workspace,
+            "project": project_name,
+            "experiments": [],
+        }
         for exp in experiments:
             result["experiments"].append(
                 {
@@ -290,6 +295,7 @@ def get_experiment_details(experiment_id: str) -> Dict[str, Any]:
         - description: Optional experiment description if available
         - metrics: List of dictionaries with metric names and current values
         - parameters: List of dictionaries with parameter names and current values
+        - others: List of dictionaries with "other" names and values
     """
     with get_comet_api() as api:
         experiment = api.get_experiment_by_key(experiment_id)
@@ -315,6 +321,15 @@ def get_experiment_details(experiment_id: str) -> Dict[str, Any]:
                     {"name": param["name"], "value": param.get("valueCurrent", "")}
                 )
 
+        # Get others
+        others = experiment.get_others_summary()
+        others_list = []
+        if others:
+            for item in others:
+                others_list.append(
+                    {"name": item["name"], "value": item.get("valueCurrent", "")}
+                )
+
         return {
             "id": experiment.id,
             "url": experiment.url,
@@ -327,6 +342,7 @@ def get_experiment_details(experiment_id: str) -> Dict[str, Any]:
             "description": getattr(experiment, "description", None),
             "metrics": metrics_list,
             "parameters": params_list,
+            "others": others_list,
         }
 
 
@@ -775,6 +791,230 @@ def get_experiment_parameters(experiment_id: str) -> Dict[str, Any]:
             "parameters": parameters,
             "parameter_count": len(parameters),
         }
+
+
+def get_project_tags(
+    workspace: Optional[str] = None,
+    project_name: Optional[str] = None,
+):
+    """
+    This function will return a list of tag texts that exist
+    in this project.
+
+    Args:
+        workspace: Workspace name (optional, will lookup the default workspace name if not provided)
+        project_name: Project name to filter experiments (optional)
+
+    Returns:
+        A list of tag names.
+
+    """
+    with get_comet_api() as api:
+        if workspace:
+            target_workspace = workspace
+        else:
+            target_workspace = api.get_default_workspace()
+
+        if project_name is None:
+            project_name = "general"
+
+        return [
+            qv.rhs
+            for qv in api.get_query_variables(target_workspace, project_name)
+            if hasattr(qv, "rhs")
+        ]
+
+
+def get_project_logged_item_names(
+    workspace: Optional[str] = None,
+    project_name: Optional[str] = None,
+):
+    """
+    This function will return a list of named items that have been
+    logged in this project.
+
+    Args:
+        workspace: Workspace name (optional, will lookup the default workspace name if not provided)
+        project_name: Project name to filter experiments (optional)
+
+    Returns:
+        A list of names.
+
+    """
+    with get_comet_api() as api:
+        if workspace:
+            target_workspace = workspace
+        else:
+            target_workspace = api.get_default_workspace()
+
+        if project_name is None:
+            project_name = "general"
+
+        return [
+            qv.name
+            for qv in api.get_query_variables(target_workspace, project_name)
+            if hasattr(qv, "name")
+        ]
+
+
+def find_tagged_experiments(
+    tag: str,
+    workspace: Optional[str] = None,
+    project_name: Optional[str] = None,
+):
+    """
+    This function will find all experiments that are tagged with the text 'tag'.
+
+    Args:
+        tag: the text of the tag
+        workspace: Workspace name (optional, will lookup the default workspace name if not provided)
+        project_name: Project name to filter experiments (optional)
+
+    Returns:
+        List containing matching unique experiment identifiers
+    """
+    with get_comet_api() as api:
+        if workspace:
+            target_workspace = workspace
+        else:
+            target_workspace = api.get_default_workspace()
+
+        if project_name is None:
+            project_name = "general"
+
+        valid = validate_project(project_name, target_workspace)
+        if valid["error"] is not None:
+            return valid
+
+        query = Tag(tag)
+        experiments = api.query(target_workspace, project_name, query)
+        if experiments:
+            return [experiment.id for experiment in experiments]
+        else:
+            return f"No experiments with the tag '{tag}' were found in workspace '{target_workspace}' and project '{project_name}'."
+
+
+def query_experiments(
+    name: str,
+    comparison: str,
+    value: str,
+    workspace: Optional[str] = None,
+    project_name: Optional[str] = None,
+):
+    """
+    This function will find all experiments that have a logged item named 'name'
+    using comparison to compare with 'value'.
+
+    Experiment name is logged as "Name".
+
+    Args:
+        name: the name of the logged item; use 'TYPE:name' to distinguish between names
+            where 'TYPE' can be "Environment", "Metadata", "Metric", "Other",
+            or "Parameter"
+        comparsion: can any of "==", ">", ">=", "<", ">=", "!=", "contains",
+            "endswith", or "startswith".
+        value: the value to compare to the logged value; can be any value; special values are
+            "true", "false", "none", or "datetime:ISO-FORMAT-DATETIME"
+        workspace: Workspace name (optional, will lookup the default workspace name if not provided)
+        project_name: Project name to filter experiments (optional)
+
+    Returns:
+        List containing matching unique experiment identifiers
+    """
+    with get_comet_api() as api:
+        if workspace:
+            target_workspace = workspace
+        else:
+            target_workspace = api.get_default_workspace()
+
+        if project_name is None:
+            project_name = "general"
+
+        query = None
+        valid = validate_project(project_name, target_workspace)
+        if valid["error"] is None:
+            results = get_project_logged_item_names(target_workspace, project_name)
+            if isinstance(results, list):
+                if ":" in name:
+                    query_type, name = name.split(":", 1)
+                    selected = [
+                        qv
+                        for qv in api.get_query_variables(
+                            target_workspace, project_name
+                        )
+                        if hasattr(qv, "name")
+                        and qv.name == name
+                        and qv.__class__.__name__.lower() == query_type.lower()
+                    ]
+                else:
+                    selected = [
+                        qv
+                        for qv in api.get_query_variables(
+                            target_workspace, project_name
+                        )
+                        if hasattr(qv, "name") and qv.name == name
+                    ]
+
+                if len(selected) == 0:
+                    return f"No experiments matching this query were found in workspace '{target_workspace}' and project '{project_name}'."
+                elif len(selected) == 1:
+                    query = _create_query(selected[0], comparison, value)
+                else:
+                    query_types = [qv.__class__.__name__ for qv in selected]
+                    return f"The name '{name}' is associated with multiple logged types ({query_types}); please specify which one you want by using 'TYPE:{name}'"
+            else:
+                return f"The name '{name}' was not found in workspace '{target_workspace}' and project '{project_name}'."
+        else:
+            return valid
+
+        experiments = api.query(target_workspace, project_name, query)
+        if experiments:
+            return [experiment.id for experiment in experiments]
+        else:
+            return f"No experiments matching this query were found in workspace '{target_workspace}' and project '{project_name}'."
+
+
+def _create_query(qv, comparison, value):
+    # Convert values:
+    if isinstance(value, str):
+        if value.lower() == "true":
+            value = 1
+        elif value.lower() == "false":
+            value = 0
+        elif value.lower() == "none":
+            value = None
+        elif value.startswith("datetime:"):
+            _, iso_format = value.split(":", 1)
+            value = datetime.fromisoformat(is_format)
+        elif value.isnumeric():
+            value = float(value)
+    elif isinstance(value, bool):
+        if value is True:
+            value = 1
+        elif value is False:
+            value = 0
+
+    # Create comparison:
+    if comparison == "==":
+        return qv == value
+    elif comparison == "!=":
+        return qv != value
+    elif comparison == "<":
+        return qv != value
+    elif comparison == "<=":
+        return qv != value
+    elif comparison == ">":
+        return qv != value
+    elif comparison == ">=":
+        return qv != value
+    elif comparison.lower() == "contains":
+        return qv.contains(value)
+    elif comparison.lower() == "endswith":
+        return qv.endsWith(value)
+    elif comparison.lower() == "startswith":
+        return qv.startsWith(value)
+    else:
+        raise Exception(f"Unknown comparision '{comparison}'")
 
 
 def _get_cache_info() -> Dict[str, Any]:
