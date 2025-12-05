@@ -203,7 +203,31 @@ class ToolRegistry:
             # Convert result to MCP format
             if isinstance(result, str):
                 return [{"type": "text", "text": result}]
-            elif isinstance(result, (dict, list)):
+            elif isinstance(result, dict):
+                # Check if result contains a resource_uri (indicates a file was created)
+                if "resource_uri" in result and result.get("resource_uri"):
+                    # Format response to highlight the resource
+                    message = result.get("message", "Operation completed")
+                    resource_uri = result["resource_uri"]
+                    filename = result.get("filename", "unknown")
+                    
+                    response_text = f"""{message}
+
+The file has been created and is available as an MCP resource:
+- Resource URI: {resource_uri}
+- Filename: {filename}
+
+You can access this file through the MCP resources API. The file contains the exported data and does not need to be processed by the LLM."""
+                    
+                    # Include full result as JSON for reference
+                    return [
+                        {"type": "text", "text": response_text},
+                        {"type": "text", "text": f"\nFull result:\n{json.dumps(result, indent=2)}"}
+                    ]
+                else:
+                    # For structured data, return as JSON
+                    return [{"type": "text", "text": json.dumps(result, indent=2)}]
+            elif isinstance(result, list):
                 # For structured data, return as JSON
                 return [{"type": "text", "text": json.dumps(result, indent=2)}]
             else:

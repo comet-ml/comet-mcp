@@ -15,11 +15,13 @@ from typing import Any, Dict, List
 from mcp import Tool
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+from mcp.types import Resource, TextResourceContents
 
 # Import our tools module and registry
 from . import tool_loader  # This ensures tools are registered
 from .utils import registry
 from .session import initialize_session
+from .resources import get_resource_manager
 
 # SSE transport imports
 from fastapi import FastAPI, Request
@@ -63,6 +65,46 @@ async def list_tools() -> List[Tool]:
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Handle tool calls."""
     return registry.call_tool(name, arguments)
+
+@server.list_resources()
+async def list_resources() -> List[Resource]:
+    """List available resources (generated files)."""
+    resource_manager = get_resource_manager()
+    resources_dict = resource_manager.list_resources()
+    
+    resources = []
+    for uri, metadata in resources_dict.items():
+        resources.append(
+            Resource(
+                uri=uri,
+                name=metadata["name"],
+                mimeType=metadata["mimeType"],
+                description=metadata.get("description", ""),
+            )
+        )
+    
+    return resources
+
+@server.read_resource()
+async def read_resource(uri: str) -> TextResourceContents:
+    """Read a resource by URI."""
+    resource_manager = get_resource_manager()
+    file_path = resource_manager.get_file_path(uri)
+    
+    if file_path is None or not file_path.exists():
+        raise ValueError(f"Resource not found: {uri}")
+    
+    # Read file content as text
+    content = file_path.read_text(encoding="utf-8")
+    
+    # Determine MIME type
+    mime_type = resource_manager._guess_mime_type(file_path)
+    
+    return TextResourceContents(
+        uri=uri,
+        mimeType=mime_type,
+        text=content,
+    )
 
 # SSE transport implementation
 app = FastAPI(title="Comet ML MCP Server", version="1.0.0")

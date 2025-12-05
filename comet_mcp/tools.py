@@ -7,9 +7,12 @@ These tools require access to comet_ml.API() singleton.
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import sys
+import csv
+import io
 from comet_mcp.utils import format_datetime, supports_paged_queries
 from comet_mcp.session import get_comet_api, get_session_context
 from comet_mcp.cache import cached
+from comet_mcp.resources import get_resource_manager
 from comet_ml.query import Tag
 
 
@@ -1060,3 +1063,123 @@ def _initialize():
     from comet_mcp.session import initialize_session
 
     initialize_session()
+
+
+def export_project_experiments_to_csv(
+    project_name: str, workspace: Optional[str] = None, filename: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Export top-level details of all experiments in a project to a CSV file.
+    The CSV file is made available as an MCP resource that can be accessed
+    without the LLM needing to process the data.
+
+    Args:
+        project_name: Name of the project to export experiments from
+        workspace: Workspace name (optional, uses default if not provided)
+        filename: Optional custom filename for the CSV. If not provided, generates one.
+
+    Returns:
+        Dictionary containing:
+        - status: "success" or "error"
+        - message: Status message
+        - resource_uri: URI of the generated CSV file resource (if successful)
+        - filename: Name of the generated file
+        - experiment_count: Number of experiments exported
+    """
+    try:
+        with get_comet_api() as api:
+            # Determine target workspace
+            if workspace:
+                target_workspace = workspace
+            else:
+                target_workspace = get_default_workspace()
+
+            # Validate project exists
+            validation = validate_project(project_name, target_workspace)
+            if not validation.get("exists", False):
+                return {
+                    "status": "error",
+                    "message": validation.get("error", "Project not found"),
+                    "resource_uri": None,
+                    "filename": None,
+                    "experiment_count": 0,
+                }
+
+            # Get all experiments for the project
+            experiments = api._get_project_experiments(target_workspace, project_name)
+            count = len(experiments) if experiments else 0
+
+            if count == 0:
+                return {
+                    "status": "error",
+                    "message": f"No experiments found in project '{project_name}'",
+                    "resource_uri": None,
+                    "filename": None,
+                    "experiment_count": 0,
+                }
+
+            # Prepare CSV data
+            csv_rows = []
+            for exp in experiments.values():
+                row = {
+                    "experiment_id": exp.get("experimentKey", ""),
+                    "name": exp.get("experimentName", ""),
+                    "status": _get_state(exp),
+                    "created_at": format_datetime(exp.get("startTimeMillis")),
+                    "updated_at": format_datetime(exp.get("endTimeMillis")),
+                    "duration_seconds": (
+                        (exp.get("endTimeMillis", 0) - exp.get("startTimeMillis", 0))
+                        / 1000.0
+                        if exp.get("endTimeMillis")
+                        else None
+                    ),
+                }
+                csv_rows.append(row)
+
+            # Generate CSV content
+            if not csv_rows:
+                return {
+                    "status": "error",
+                    "message": "No experiment data to export",
+                    "resource_uri": None,
+                    "filename": None,
+                    "experiment_count": 0,
+                }
+
+            # Create CSV in memory
+            output = io.StringIO()
+            fieldnames = list(csv_rows[0].keys())
+            writer = csv.DictWriter(output, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(csv_rows)
+            csv_content = output.getvalue()
+            output.close()
+
+            # Generate filename if not provided
+            if filename is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                safe_project = "".join(c for c in project_name if c.isalnum() or c in ("-", "_"))
+                filename = f"experiments_{safe_project}_{timestamp}.csv"
+
+            # Register file as resource
+            resource_manager = get_resource_manager()
+            resource_uri = resource_manager.create_file(
+                filename, csv_content.encode("utf-8")
+            )
+
+            return {
+                "status": "success",
+                "message": f"Exported {count} experiments to CSV",
+                "resource_uri": resource_uri,
+                "filename": filename,
+                "experiment_count": count,
+            }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to export experiments: {str(e)}",
+            "resource_uri": None,
+            "filename": None,
+            "experiment_count": 0,
+        }
