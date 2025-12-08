@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "comet-mcp"
-version = "1.2.0"
+version = "1.3.0"
 description = "MCP server for Comet ML API integration"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -26,9 +26,14 @@ classifiers = [
 ]
 requires-python = ">=3.8"
 dependencies = [
-    "mcp>=1.0.0",
     "comet-ml>=3.0.0",
     "fastapi>=0.100.0",
+    "mcp>=1.0.0",
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.20.0",
+    "opentelemetry-instrumentation>=0.42b0",
+    "opentelemetry-sdk>=1.20.0",
+    "requests>=2.25.0",
     "uvicorn[standard]>=0.20.0",
 ]
 
@@ -36,7 +41,6 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
-    "requests>=2.25.0",
 ]
 
 [project.urls]

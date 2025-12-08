@@ -61,12 +61,13 @@ class TestListExperiments:
         # Call the function
         result = list_experiments()
 
-        # Verify result structure
-        assert isinstance(result, list)
-        assert len(result) == 2
+        # Verify result structure - now returns a dict with experiments key
+        assert isinstance(result, dict)
+        assert "experiments" in result
+        assert len(result["experiments"]) == 2
 
         # Verify first experiment
-        exp1 = result[0]
+        exp1 = result["experiments"][0]
         assert isinstance(exp1, dict)
         assert exp1["id"] == "exp1"
         assert exp1["name"] == "Test Experiment 1"
@@ -75,7 +76,7 @@ class TestListExperiments:
         assert exp1["description"] == "Test description 1"
 
         # Verify second experiment
-        exp2 = result[1]
+        exp2 = result["experiments"][1]
         assert isinstance(exp2, dict)
         assert exp2["id"] == "exp2"
         assert exp2["name"] == "Test Experiment 2"
@@ -83,15 +84,22 @@ class TestListExperiments:
         assert exp2["created_at"] == "2024-01-02T12:00:00"  # Original timestamp
         assert exp2["description"] is None
 
-        # Verify API was called correctly
-        mock_api.get_experiments.assert_called_once_with(
-            workspace="default-workspace",
-            project_name=None,
-            page=1,
-            page_size=10,
-            sort_by=None,
-            sort_order=None,
-        )
+        # Verify API was called correctly (project_name defaults to "general" if None)
+        # When SUPPORTS_PAGED_QUERIES is True, page and page_size are passed
+        from comet_mcp.tools import SUPPORTS_PAGED_QUERIES
+
+        if SUPPORTS_PAGED_QUERIES:
+            mock_api.get_experiments.assert_called_once_with(
+                workspace="default-workspace",
+                project_name="general",
+                page=1,
+                page_size=10,
+            )
+        else:
+            mock_api.get_experiments.assert_called_once_with(
+                workspace="default-workspace",
+                project_name="general",
+            )
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_list_experiments_with_workspace(self, mock_get_api):
@@ -102,16 +110,25 @@ class TestListExperiments:
 
         result = list_experiments(workspace="test-workspace")
 
+        # When no experiments, function returns empty list
         assert isinstance(result, list)
         assert len(result) == 0
-        mock_api.get_experiments.assert_called_once_with(
-            workspace="test-workspace",
-            project_name=None,
-            page=1,
-            page_size=10,
-            sort_by=None,
-            sort_order=None,
-        )
+
+        # Verify API was called (project_name defaults to "general" if None)
+        from comet_mcp.tools import SUPPORTS_PAGED_QUERIES
+
+        if SUPPORTS_PAGED_QUERIES:
+            mock_api.get_experiments.assert_called_once_with(
+                workspace="test-workspace",
+                project_name="general",
+                page=1,
+                page_size=10,
+            )
+        else:
+            mock_api.get_experiments.assert_called_once_with(
+                workspace="test-workspace",
+                project_name="general",
+            )
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_list_experiments_empty_result(self, mock_get_api):
@@ -145,7 +162,7 @@ class TestListExperiments:
         mock_api = Mock()
         mock_api.get_default_workspace.return_value = "default-workspace"
 
-        # Create simple mock experiments
+        # Create mock experiments with different timestamps for sorting
         mock_experiments = []
         for i in range(5):
             exp = Mock()
@@ -153,6 +170,9 @@ class TestListExperiments:
             exp.name = f"Experiment {i}"
             exp.get_state.return_value = "completed"
             exp.description = f"Description {i}"
+            # Set timestamps - older experiments first
+            exp.start_server_timestamp = datetime(2024, 1, 1 + i, 12, 0, 0)
+            exp.end_server_timestamp = datetime(2024, 1, 1 + i, 13, 0, 0)
             mock_experiments.append(exp)
 
         mock_api.get_experiments.return_value = mock_experiments
@@ -161,13 +181,29 @@ class TestListExperiments:
         # Test pagination - get page 2 with page_size 2
         result = list_experiments(page=2, page_size=2)
 
-        assert isinstance(result, list)
-        assert len(result) == 2  # Should get 2 experiments for page 2
+        assert isinstance(result, dict)
+        assert len(result["experiments"]) == 2  # Should get 2 experiments for page 2
+
+        # Test sorting - sort by startTime descending (newest first)
+        result_sorted = list_experiments(sort_by="startTime", sort_order="desc")
+
+        assert isinstance(result_sorted, dict)
+        assert len(result_sorted["experiments"]) == 5  # All experiments
+
+        # Verify sorting order (should be newest first, so exp4, exp3, exp2, exp1, exp0)
+        experiment_ids = [exp["id"] for exp in result_sorted["experiments"]]
+        assert experiment_ids == ["exp4", "exp3", "exp2", "exp1", "exp0"]
+
+        # Test sorting ascending (oldest first)
+        result_sorted_asc = list_experiments(sort_by="startTime", sort_order="asc")
+        experiment_ids_asc = [exp["id"] for exp in result_sorted_asc["experiments"]]
+        assert experiment_ids_asc == ["exp0", "exp1", "exp2", "exp3", "exp4"]
 
         # Test that API was called without pagination/sorting parameters
         # (since we're simulating the case where paged queries are not supported)
+        # Note: project_name defaults to "general" if None
         mock_api.get_experiments.assert_called_with(
-            workspace="default-workspace", project_name=None
+            workspace="default-workspace", project_name="general"
         )
 
 
@@ -918,14 +954,12 @@ class TestUpdatedListExperiments:
         assert result[0]["id"] == "exp1"
         assert result[0]["name"] == "Filtered Experiment"
 
-        # Verify API was called with project filter
+        # Verify API was called with project filter (sort params not included when None)
         mock_api.get_experiments.assert_called_once_with(
             workspace="default-workspace",
             project_name="smoke-test",
             page=1,
             page_size=10,
-            sort_by=None,
-            sort_order=None,
         )
 
     @patch("comet_mcp.tools.get_comet_api")
@@ -944,8 +978,6 @@ class TestUpdatedListExperiments:
             project_name="smoke-test",
             page=1,
             page_size=10,
-            sort_by=None,
-            sort_order=None,
         )
 
 

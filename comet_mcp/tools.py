@@ -7,9 +7,17 @@ These tools require access to comet_ml.API() singleton.
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import sys
+import csv
+import io
+import json
+from functools import wraps
 from comet_mcp.utils import format_datetime, supports_paged_queries
 from comet_mcp.session import get_comet_api, get_session_context
 from comet_mcp.cache import cached
+from comet_mcp.resources import get_resource_manager
+from comet_ml.query import Tag
+from comet_mcp.telemetry import get_tracer
+from opentelemetry import trace
 
 
 SUPPORTS_PAGED_QUERIES = supports_paged_queries()
@@ -17,7 +25,7 @@ SUPPORTS_PAGED_QUERIES = supports_paged_queries()
 if not SUPPORTS_PAGED_QUERIES:
     print(
         "WARNING: running without paged queries; update comet_ml SDK and backend to fix",
-        file=sys.stderr
+        file=sys.stderr,
     )
 
 
@@ -31,6 +39,61 @@ def _get_state(metadata):
     return "finished"
 
 
+def _instrument_tool(func):
+    """Decorator to instrument tool functions with OpenTelemetry."""
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        tracer = get_tracer("comet-mcp.tools")
+        span_name = f"tool.{func.__name__}"
+
+        with tracer.start_as_current_span(span_name) as span:
+            # Add function arguments as attributes (sanitized)
+            for key, value in kwargs.items():
+                if value is not None:
+                    # Only add simple types to avoid large payloads
+                    if isinstance(value, (str, int, float, bool)):
+                        span.set_attribute(f"tool.arg.{key}", str(value))
+                    elif isinstance(value, list) and len(value) < 10:
+                        span.set_attribute(f"tool.arg.{key}.count", len(value))
+
+            try:
+                result = func(*args, **kwargs)
+
+                # Add result metadata
+                if isinstance(result, dict):
+                    if "workspace" in result:
+                        span.set_attribute("tool.result.workspace", result["workspace"])
+                    if "project_name" in result:
+                        span.set_attribute(
+                            "tool.result.project_name", result["project_name"]
+                        )
+                    if "experiment_count" in result:
+                        span.set_attribute(
+                            "tool.result.experiment_count", result["experiment_count"]
+                        )
+                    if "experiments" in result and isinstance(
+                        result["experiments"], list
+                    ):
+                        span.set_attribute(
+                            "tool.result.experiment_list_count",
+                            len(result["experiments"]),
+                        )
+                elif isinstance(result, list):
+                    span.set_attribute("tool.result.count", len(result))
+
+                span.set_attribute("tool.success", True)
+                return result
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+                span.set_attribute("tool.success", False)
+                raise
+
+    return wrapper
+
+
+@_instrument_tool
 @cached(ttl_seconds=300)  # Cache for 5 minutes
 def list_experiments(
     workspace: Optional[str] = None,
@@ -46,7 +109,7 @@ def list_experiments(
 
     Args:
         workspace: Workspace name (optional, will lookup the default workspace name if not provided)
-        project_name: Project name to filter experiments (optional)
+        project_name: Project name to filter experiments (optional, default is "general")
         page: get paged results, starting with page 1
         page_size: get this number of experiments at a time
         sort_by: Field to sort by. Must be "startTime" or "endTime" if provided.
@@ -71,14 +134,23 @@ def list_experiments(
             project_name = "general"
 
         if SUPPORTS_PAGED_QUERIES:
-            experiments = api.get_experiments(
-                workspace=target_workspace,
-                project_name=project_name,
-                page=page,
-                page_size=page_size,
-                sort_by=sort_by,
-                sort_order=sort_order,
-            )
+            # Build kwargs for get_experiments, only including sort params if both are provided
+            get_experiments_kwargs = {
+                "workspace": target_workspace,
+                "project_name": project_name,
+                "page": page,
+                "page_size": page_size,
+            }
+            # Only pass sort_by and sort_order if both are provided and valid
+            if sort_by and sort_order:
+                if sort_by in ["startTime", "endTime"] and sort_order.lower() in [
+                    "asc",
+                    "desc",
+                ]:
+                    get_experiments_kwargs["sort_by"] = sort_by
+                    get_experiments_kwargs["sort_order"] = sort_order
+
+            experiments = api.get_experiments(**get_experiments_kwargs)
         else:
             # Get all experiments when paged queries are not supported
             experiments = api.get_experiments(
@@ -89,12 +161,24 @@ def list_experiments(
             # Apply manual sorting if requested
             if sort_by and sort_order:
                 if sort_by in ["startTime", "endTime"]:
-                    # Sort experiments by the specified field
-                    reverse = sort_order.lower() == "desc"
-                    experiments.sort(
-                        key=lambda exp: getattr(exp, f"{sort_by}_server_timestamp", 0),
-                        reverse=reverse,
-                    )
+                    # Map sort_by parameter to actual attribute name
+                    # "startTime" -> "start_server_timestamp"
+                    # "endTime" -> "end_server_timestamp"
+                    attr_map = {
+                        "startTime": "start_server_timestamp",
+                        "endTime": "end_server_timestamp",
+                    }
+                    attr_name = attr_map.get(sort_by)
+                    if attr_name:
+                        reverse = sort_order.lower() == "desc"
+                        # Use a default of datetime.min for missing timestamps to sort them first
+                        from datetime import datetime as dt
+
+                        default_ts = dt.min
+                        experiments.sort(
+                            key=lambda exp: getattr(exp, attr_name, default_ts),
+                            reverse=reverse,
+                        )
 
             # Apply manual pagination
             if page and page_size:
@@ -105,7 +189,11 @@ def list_experiments(
         if not experiments:
             return []
 
-        result = {"workspace": target_workspace, "project": project_name, "experiments": []}
+        result = {
+            "workspace": target_workspace,
+            "project": project_name,
+            "experiments": [],
+        }
         for exp in experiments:
             result["experiments"].append(
                 {
@@ -120,6 +208,7 @@ def list_experiments(
         return result
 
 
+@_instrument_tool
 @cached(ttl_seconds=3600)  # Cache for 1 hour
 def get_default_workspace() -> str:
     """
@@ -133,6 +222,7 @@ def get_default_workspace() -> str:
         return api.get_default_workspace()
 
 
+@_instrument_tool
 def get_experiment_code(experiment_id: str) -> Dict[str, str]:
     """
     Get the code for a specific experiment.
@@ -149,6 +239,7 @@ def get_experiment_code(experiment_id: str) -> Dict[str, str]:
         return {"code": experiment.get_code()}
 
 
+@_instrument_tool
 def get_experiment_metric_data(
     experiment_ids: List[str], metric_names: List[str], x_axis: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -271,6 +362,7 @@ def get_experiment_metric_data(
         }
 
 
+@_instrument_tool
 def get_experiment_details(experiment_id: str) -> Dict[str, Any]:
     """
     Get detailed information about a specific experiment, including
@@ -290,6 +382,7 @@ def get_experiment_details(experiment_id: str) -> Dict[str, Any]:
         - description: Optional experiment description if available
         - metrics: List of dictionaries with metric names and current values
         - parameters: List of dictionaries with parameter names and current values
+        - others: List of dictionaries with "other" names and values
     """
     with get_comet_api() as api:
         experiment = api.get_experiment_by_key(experiment_id)
@@ -315,6 +408,15 @@ def get_experiment_details(experiment_id: str) -> Dict[str, Any]:
                     {"name": param["name"], "value": param.get("valueCurrent", "")}
                 )
 
+        # Get others
+        others = experiment.get_others_summary()
+        others_list = []
+        if others:
+            for item in others:
+                others_list.append(
+                    {"name": item["name"], "value": item.get("valueCurrent", "")}
+                )
+
         return {
             "id": experiment.id,
             "url": experiment.url,
@@ -327,9 +429,11 @@ def get_experiment_details(experiment_id: str) -> Dict[str, Any]:
             "description": getattr(experiment, "description", None),
             "metrics": metrics_list,
             "parameters": params_list,
+            "others": others_list,
         }
 
 
+@_instrument_tool
 @cached(ttl_seconds=1800)  # Cache for 30 minutes (projects change rarely)
 def list_projects(
     workspace: Optional[str] = None,
@@ -413,6 +517,7 @@ def list_projects(
         }
 
 
+@_instrument_tool
 def get_project_details(project_name: str, workspace: Optional[str]) -> Dict[str, Any]:
     """
     Get detailed information about a project.
@@ -447,6 +552,7 @@ def get_project_details(project_name: str, workspace: Optional[str]) -> Dict[str
         }
 
 
+@_instrument_tool
 @cached(ttl_seconds=600)  # Cache for 10 minutes
 def get_session_info() -> Dict[str, Any]:
     """
@@ -500,6 +606,7 @@ def get_session_info() -> Dict[str, Any]:
         }
 
 
+@_instrument_tool
 def get_all_experiments_summary(
     project_name: str, workspace: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -558,6 +665,7 @@ def get_all_experiments_summary(
             }
 
 
+@_instrument_tool
 def validate_project(
     project_name: str, workspace: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -602,6 +710,7 @@ def validate_project(
             }
 
 
+@_instrument_tool
 def get_experiment_summary(experiment_id: str) -> Dict[str, Any]:
     """
     Get a summary of experiment performance with final/best metric values.
@@ -652,6 +761,7 @@ def get_experiment_summary(experiment_id: str) -> Dict[str, Any]:
         }
 
 
+@_instrument_tool
 def get_experiment_training_progress(
     experiment_id: str, metric_names: Optional[List[str]] = None
 ) -> Dict[str, Any]:
@@ -738,6 +848,7 @@ def get_experiment_training_progress(
         }
 
 
+@_instrument_tool
 def get_experiment_parameters(experiment_id: str) -> Dict[str, Any]:
     """
     Get experiment parameters and configuration settings.
@@ -777,6 +888,237 @@ def get_experiment_parameters(experiment_id: str) -> Dict[str, Any]:
         }
 
 
+@_instrument_tool
+def get_project_tags(
+    workspace: Optional[str] = None,
+    project_name: Optional[str] = None,
+):
+    """
+    This function will return a list of tag texts that exist
+    in this project.
+
+    Args:
+        workspace: Workspace name (optional, will lookup the default workspace name if not provided)
+        project_name: Project name to filter experiments (optional, default is "general")
+
+    Returns:
+        A list of tag names.
+
+    """
+    with get_comet_api() as api:
+        if workspace:
+            target_workspace = workspace
+        else:
+            target_workspace = api.get_default_workspace()
+
+        if project_name is None:
+            project_name = "general"
+
+        return [
+            qv.rhs
+            for qv in api.get_query_variables(target_workspace, project_name)
+            if hasattr(qv, "rhs")
+        ]
+
+
+@_instrument_tool
+def get_project_logged_item_names(
+    workspace: Optional[str] = None,
+    project_name: Optional[str] = None,
+):
+    """
+    This function will return a list of named items that have been
+    logged in this project.
+
+    Args:
+        workspace: Workspace name (optional, will lookup the default workspace name if not provided)
+        project_name: Project name to filter experiments (optional, default is "general")
+
+    Returns:
+        A list of names.
+
+    """
+    with get_comet_api() as api:
+        if workspace:
+            target_workspace = workspace
+        else:
+            target_workspace = api.get_default_workspace()
+
+        if project_name is None:
+            project_name = "general"
+
+        return [
+            qv.name
+            for qv in api.get_query_variables(target_workspace, project_name)
+            if hasattr(qv, "name")
+        ]
+
+
+@_instrument_tool
+def find_tagged_experiments(
+    tag: str,
+    workspace: Optional[str] = None,
+    project_name: Optional[str] = None,
+):
+    """
+    This function will find all experiments that are tagged with the text 'tag'.
+
+    Args:
+        tag: the text of the tag
+        workspace: Workspace name (optional, will lookup the default workspace name if not provided)
+        project_name: Project name to filter experiments (optional, default is "general")
+
+    Returns:
+        List containing matching unique experiment identifiers
+    """
+    with get_comet_api() as api:
+        if workspace:
+            target_workspace = workspace
+        else:
+            target_workspace = api.get_default_workspace()
+
+        if project_name is None:
+            project_name = "general"
+
+        valid = validate_project(project_name, target_workspace)
+        if valid["error"] is not None:
+            return valid
+
+        query = Tag(tag)
+        experiments = api.query(target_workspace, project_name, query)
+        if experiments:
+            return [experiment.id for experiment in experiments]
+        else:
+            return f"No experiments with the tag '{tag}' were found in workspace '{target_workspace}' and project '{project_name}'."
+
+
+@_instrument_tool
+def query_experiments(
+    name: str,
+    comparison: str,
+    value: str,
+    workspace: Optional[str] = None,
+    project_name: Optional[str] = None,
+):
+    """
+    This function will find all experiments that have a logged item named 'name'
+    using comparison to compare with 'value'.
+
+    Experiment name is logged as "Name".
+
+    Args:
+        name: the name of the logged item; use 'TYPE:name' to distinguish between names
+            where 'TYPE' can be "Environment", "Metadata", "Metric", "Other",
+            or "Parameter"
+        comparison: can be any of "==", ">", ">=", "<", ">=", "!=", "contains",
+            "endswith", or "startswith".
+        value: the value to compare to the logged value; can be any value; special values are
+            "true", "false", "none", or "datetime:ISO-FORMAT-DATETIME"
+        workspace: Workspace name (optional, will lookup the default workspace name if not provided)
+        project_name: Project name to filter experiments (optional, default is "general")
+
+    Returns:
+        List containing matching unique experiment identifiers
+    """
+    with get_comet_api() as api:
+        if workspace:
+            target_workspace = workspace
+        else:
+            target_workspace = api.get_default_workspace()
+
+        if project_name is None:
+            project_name = "general"
+
+        query = None
+        valid = validate_project(project_name, target_workspace)
+        if valid["error"] is None:
+            results = get_project_logged_item_names(target_workspace, project_name)
+            if isinstance(results, list):
+                if ":" in name:
+                    query_type, name = name.split(":", 1)
+                    selected = [
+                        qv
+                        for qv in api.get_query_variables(
+                            target_workspace, project_name
+                        )
+                        if hasattr(qv, "name")
+                        and qv.name == name
+                        and qv.__class__.__name__.lower() == query_type.lower()
+                    ]
+                else:
+                    selected = [
+                        qv
+                        for qv in api.get_query_variables(
+                            target_workspace, project_name
+                        )
+                        if hasattr(qv, "name") and qv.name == name
+                    ]
+
+                if len(selected) == 0:
+                    return f"No experiments matching this query were found in workspace '{target_workspace}' and project '{project_name}'."
+                elif len(selected) == 1:
+                    query = _create_query(selected[0], comparison, value)
+                else:
+                    query_types = [qv.__class__.__name__ for qv in selected]
+                    return f"The name '{name}' is associated with multiple logged types ({query_types}); please specify which one you want by using 'TYPE:{name}'"
+            else:
+                return f"The name '{name}' was not found in workspace '{target_workspace}' and project '{project_name}'."
+        else:
+            return valid
+
+        experiments = api.query(target_workspace, project_name, query)
+        if experiments:
+            return [experiment.id for experiment in experiments]
+        else:
+            return f"No experiments matching this query were found in workspace '{target_workspace}' and project '{project_name}'."
+
+
+def _create_query(qv, comparison, value):
+    # Convert values:
+    if isinstance(value, str):
+        if value.lower() == "true":
+            value = 1
+        elif value.lower() == "false":
+            value = 0
+        elif value.lower() == "none":
+            value = None
+        elif value.startswith("datetime:"):
+            _, iso_format = value.split(":", 1)
+            value = datetime.fromisoformat(iso_format)
+        else:
+            try:
+                value = float(value)
+            except ValueError:
+                pass
+    elif isinstance(value, bool):
+        if value is True:
+            value = 1
+        elif value is False:
+            value = 0
+
+    # Create comparison:
+    if comparison == "==":
+        return qv == value
+    elif comparison == "!=":
+        return qv != value
+    elif comparison == "<":
+        return qv < value
+    elif comparison == "<=":
+        return qv <= value
+    elif comparison == ">":
+        return qv > value
+    elif comparison == ">=":
+        return qv >= value
+    elif comparison.lower() == "contains":
+        return qv.contains(value)
+    elif comparison.lower() == "endswith":
+        return qv.endsWith(value)
+    elif comparison.lower() == "startswith":
+        return qv.startsWith(value)
+    else:
+        raise Exception(f"Unknown comparison '{comparison}'")
+
+
 def _get_cache_info() -> Dict[str, Any]:
     """
     Get information about the current cache state.
@@ -813,6 +1155,240 @@ def _clear_cache(func_name: Optional[str] = None) -> Dict[str, Any]:
             "status": "error",
             "message": f"Failed to clear cache: {str(e)}",
             "func_name": func_name,
+        }
+
+
+@_instrument_tool
+def experiment_spreadsheet(
+    workspace: Optional[str] = None,
+    project_name: Optional[str] = None,
+    experiment_keys: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Export experiment details to a CSV file with workspace, project_name, experiment name,
+    duration, metrics, and parameters. The CSV file is made available as an MCP resource
+    that can be accessed without the LLM needing to process the data.
+
+    Args:
+        workspace: Workspace name (optional, uses default if not provided).
+                   Ignored if experiment_keys is provided.
+        project_name: Project name (optional, default is "general"). Ignored if experiment_keys is provided.
+        experiment_keys: Optional list of experiment IDs. If provided, workspace and
+                        project_name arguments are ignored and only these experiments
+                        are exported.
+
+    Returns:
+        Dictionary containing:
+        - status: "success" or "error"
+        - message: Status message
+        - resource_uri: URI of the generated CSV file resource (if successful)
+        - filename: Name of the generated file
+        - experiment_count: Number of experiments exported
+    """
+    try:
+        with get_comet_api() as api:
+            experiment_ids = []
+
+            # If experiment_keys is provided, use those and ignore workspace/project_name
+            if experiment_keys:
+                experiment_ids = experiment_keys
+            else:
+                # Determine target workspace
+                if workspace:
+                    target_workspace = workspace
+                else:
+                    target_workspace = get_default_workspace()
+
+                if project_name is None:
+                    project_name = "general"
+
+                # Validate project exists
+                validation = validate_project(project_name, target_workspace)
+                if not validation.get("exists", False):
+                    return {
+                        "status": "error",
+                        "message": validation.get("error", "Project not found"),
+                        "resource_uri": None,
+                        "filename": None,
+                        "experiment_count": 0,
+                    }
+
+                # Get all experiments for the project
+                experiments_metadata = api._get_project_experiments(
+                    target_workspace, project_name
+                )
+                if experiments_metadata:
+                    experiment_ids = [
+                        exp.get("experimentKey", "")
+                        for exp in experiments_metadata.values()
+                        if exp.get("experimentKey")
+                    ]
+                else:
+                    experiment_ids = []
+
+            if not experiment_ids:
+                return {
+                    "status": "error",
+                    "message": "No experiments found to export",
+                    "resource_uri": None,
+                    "filename": None,
+                    "experiment_count": 0,
+                }
+
+            # Prepare CSV data by fetching full experiment details
+            csv_rows = []
+            for exp_id in experiment_ids:
+                try:
+                    experiment = api.get_experiment_by_key(exp_id)
+                    if not experiment:
+                        continue
+
+                    # Get workspace and project_name from experiment if available
+                    exp_workspace = getattr(experiment, "workspace", None)
+                    exp_project = getattr(experiment, "project_name", None)
+
+                    # If not available from experiment object, try to extract from URL
+                    if not exp_workspace or not exp_project:
+                        try:
+                            # URL format: https://www.comet.com/{workspace}/{project_name}/...
+                            url = getattr(experiment, "url", "")
+                            if url and "/" in url:
+                                parts = url.split("/")
+                                if len(parts) >= 4:
+                                    # Find the workspace and project in the URL
+                                    for i, part in enumerate(parts):
+                                        if "comet.com" in part or "comet.ml" in part:
+                                            if i + 2 < len(parts):
+                                                exp_workspace = (
+                                                    exp_workspace or parts[i + 1]
+                                                )
+                                                exp_project = (
+                                                    exp_project or parts[i + 2]
+                                                )
+                                            break
+                        except Exception:
+                            pass
+
+                    # If still not available and we have context, use it
+                    if not exp_workspace and workspace:
+                        exp_workspace = workspace
+                    elif not exp_workspace:
+                        exp_workspace = get_default_workspace()
+
+                    if not exp_project and project_name:
+                        exp_project = project_name
+
+                    # Calculate duration
+                    start_time = experiment.start_server_timestamp
+                    end_time = experiment.end_server_timestamp or start_time
+                    duration_seconds = None
+                    if start_time and end_time:
+                        # Check if timestamps are in milliseconds (> 1e12) or seconds
+                        if start_time > 1e12 or end_time > 1e12:
+                            # Timestamps are in milliseconds
+                            duration_seconds = (end_time - start_time) / 1000.0
+                        else:
+                            # Timestamps are in seconds
+                            duration_seconds = end_time - start_time
+
+                    # Get metrics
+                    metrics_summary = experiment.get_metrics_summary()
+                    metrics_dict = {}
+                    if metrics_summary:
+                        for metric in metrics_summary:
+                            metric_name = metric.get("name", "")
+                            metric_value = metric.get("valueCurrent", 0)
+                            if metric_name:
+                                metrics_dict[metric_name] = metric_value
+
+                    # Get parameters
+                    params_summary = experiment.get_parameters_summary()
+                    params_dict = {}
+                    if params_summary:
+                        for param in params_summary:
+                            param_name = param.get("name", "")
+                            param_value = param.get("valueCurrent", "")
+                            if param_name:
+                                params_dict[param_name] = param_value
+
+                    # Create row
+                    row = {
+                        "workspace": exp_workspace or "",
+                        "project_name": exp_project or "",
+                        "experiment_name": experiment.name or "",
+                        "duration_seconds": duration_seconds,
+                        "metrics": json.dumps(metrics_dict) if metrics_dict else "",
+                        "parameters": json.dumps(params_dict) if params_dict else "",
+                    }
+                    csv_rows.append(row)
+
+                except Exception as e:
+                    # Skip experiments that fail to load
+                    continue
+
+            # Generate CSV content
+            if not csv_rows:
+                return {
+                    "status": "error",
+                    "message": "No experiment data to export",
+                    "resource_uri": None,
+                    "filename": None,
+                    "experiment_count": 0,
+                }
+
+            # Create CSV in memory
+            output = io.StringIO()
+            fieldnames = [
+                "workspace",
+                "project_name",
+                "experiment_name",
+                "duration_seconds",
+                "metrics",
+                "parameters",
+            ]
+            writer = csv.DictWriter(output, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(csv_rows)
+            csv_content = output.getvalue()
+            output.close()
+
+            # Generate filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            if experiment_keys:
+                filename = f"experiment_spreadsheet_{timestamp}.csv"
+            else:
+                safe_project = "".join(
+                    c
+                    for c in (project_name or "experiments")
+                    if c.isalnum() or c in ("-", "_")
+                )
+                filename = f"experiment_spreadsheet_{safe_project}_{timestamp}.csv"
+
+            # Register file as resource
+            resource_manager = get_resource_manager()
+            resource_uri = resource_manager.create_file(
+                filename, csv_content.encode("utf-8")
+            )
+
+            # Get the actual file path
+            file_path = resource_manager.get_file_path(resource_uri)
+
+            return {
+                "status": "success",
+                "message": f"Exported {len(csv_rows)} experiments to CSV",
+                "resource_uri": resource_uri,
+                "filename": filename,
+                "file_path": str(file_path) if file_path else None,
+                "experiment_count": len(csv_rows),
+            }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to export experiments: {str(e)}",
+            "resource_uri": None,
+            "filename": None,
+            "experiment_count": 0,
         }
 
 
