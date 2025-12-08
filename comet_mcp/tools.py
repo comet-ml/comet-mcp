@@ -10,11 +10,14 @@ import sys
 import csv
 import io
 import json
+from functools import wraps
 from comet_mcp.utils import format_datetime, supports_paged_queries
 from comet_mcp.session import get_comet_api, get_session_context
 from comet_mcp.cache import cached
 from comet_mcp.resources import get_resource_manager
 from comet_ml.query import Tag
+from comet_mcp.telemetry import get_tracer
+from opentelemetry import trace
 
 
 SUPPORTS_PAGED_QUERIES = supports_paged_queries()
@@ -36,6 +39,61 @@ def _get_state(metadata):
     return "finished"
 
 
+def _instrument_tool(func):
+    """Decorator to instrument tool functions with OpenTelemetry."""
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        tracer = get_tracer("comet-mcp.tools")
+        span_name = f"tool.{func.__name__}"
+
+        with tracer.start_as_current_span(span_name) as span:
+            # Add function arguments as attributes (sanitized)
+            for key, value in kwargs.items():
+                if value is not None:
+                    # Only add simple types to avoid large payloads
+                    if isinstance(value, (str, int, float, bool)):
+                        span.set_attribute(f"tool.arg.{key}", str(value))
+                    elif isinstance(value, list) and len(value) < 10:
+                        span.set_attribute(f"tool.arg.{key}.count", len(value))
+
+            try:
+                result = func(*args, **kwargs)
+
+                # Add result metadata
+                if isinstance(result, dict):
+                    if "workspace" in result:
+                        span.set_attribute("tool.result.workspace", result["workspace"])
+                    if "project_name" in result:
+                        span.set_attribute(
+                            "tool.result.project_name", result["project_name"]
+                        )
+                    if "experiment_count" in result:
+                        span.set_attribute(
+                            "tool.result.experiment_count", result["experiment_count"]
+                        )
+                    if "experiments" in result and isinstance(
+                        result["experiments"], list
+                    ):
+                        span.set_attribute(
+                            "tool.result.experiment_list_count",
+                            len(result["experiments"]),
+                        )
+                elif isinstance(result, list):
+                    span.set_attribute("tool.result.count", len(result))
+
+                span.set_attribute("tool.success", True)
+                return result
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+                span.set_attribute("tool.success", False)
+                raise
+
+    return wrapper
+
+
+@_instrument_tool
 @cached(ttl_seconds=300)  # Cache for 5 minutes
 def list_experiments(
     workspace: Optional[str] = None,
@@ -129,6 +187,7 @@ def list_experiments(
         return result
 
 
+@_instrument_tool
 @cached(ttl_seconds=3600)  # Cache for 1 hour
 def get_default_workspace() -> str:
     """
@@ -142,6 +201,7 @@ def get_default_workspace() -> str:
         return api.get_default_workspace()
 
 
+@_instrument_tool
 def get_experiment_code(experiment_id: str) -> Dict[str, str]:
     """
     Get the code for a specific experiment.
@@ -158,6 +218,7 @@ def get_experiment_code(experiment_id: str) -> Dict[str, str]:
         return {"code": experiment.get_code()}
 
 
+@_instrument_tool
 def get_experiment_metric_data(
     experiment_ids: List[str], metric_names: List[str], x_axis: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -280,6 +341,7 @@ def get_experiment_metric_data(
         }
 
 
+@_instrument_tool
 def get_experiment_details(experiment_id: str) -> Dict[str, Any]:
     """
     Get detailed information about a specific experiment, including
@@ -350,6 +412,7 @@ def get_experiment_details(experiment_id: str) -> Dict[str, Any]:
         }
 
 
+@_instrument_tool
 @cached(ttl_seconds=1800)  # Cache for 30 minutes (projects change rarely)
 def list_projects(
     workspace: Optional[str] = None,
@@ -433,6 +496,7 @@ def list_projects(
         }
 
 
+@_instrument_tool
 def get_project_details(project_name: str, workspace: Optional[str]) -> Dict[str, Any]:
     """
     Get detailed information about a project.
@@ -467,6 +531,7 @@ def get_project_details(project_name: str, workspace: Optional[str]) -> Dict[str
         }
 
 
+@_instrument_tool
 @cached(ttl_seconds=600)  # Cache for 10 minutes
 def get_session_info() -> Dict[str, Any]:
     """
@@ -520,6 +585,7 @@ def get_session_info() -> Dict[str, Any]:
         }
 
 
+@_instrument_tool
 def get_all_experiments_summary(
     project_name: str, workspace: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -578,6 +644,7 @@ def get_all_experiments_summary(
             }
 
 
+@_instrument_tool
 def validate_project(
     project_name: str, workspace: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -622,6 +689,7 @@ def validate_project(
             }
 
 
+@_instrument_tool
 def get_experiment_summary(experiment_id: str) -> Dict[str, Any]:
     """
     Get a summary of experiment performance with final/best metric values.
@@ -672,6 +740,7 @@ def get_experiment_summary(experiment_id: str) -> Dict[str, Any]:
         }
 
 
+@_instrument_tool
 def get_experiment_training_progress(
     experiment_id: str, metric_names: Optional[List[str]] = None
 ) -> Dict[str, Any]:
@@ -758,6 +827,7 @@ def get_experiment_training_progress(
         }
 
 
+@_instrument_tool
 def get_experiment_parameters(experiment_id: str) -> Dict[str, Any]:
     """
     Get experiment parameters and configuration settings.
@@ -797,6 +867,7 @@ def get_experiment_parameters(experiment_id: str) -> Dict[str, Any]:
         }
 
 
+@_instrument_tool
 def get_project_tags(
     workspace: Optional[str] = None,
     project_name: Optional[str] = None,
@@ -829,6 +900,7 @@ def get_project_tags(
         ]
 
 
+@_instrument_tool
 def get_project_logged_item_names(
     workspace: Optional[str] = None,
     project_name: Optional[str] = None,
@@ -861,6 +933,7 @@ def get_project_logged_item_names(
         ]
 
 
+@_instrument_tool
 def find_tagged_experiments(
     tag: str,
     workspace: Optional[str] = None,
@@ -898,6 +971,7 @@ def find_tagged_experiments(
             return f"No experiments with the tag '{tag}' were found in workspace '{target_workspace}' and project '{project_name}'."
 
 
+@_instrument_tool
 def query_experiments(
     name: str,
     comparison: str,
@@ -1060,6 +1134,7 @@ def _clear_cache(func_name: Optional[str] = None) -> Dict[str, Any]:
         }
 
 
+@_instrument_tool
 def experiment_spreadsheet(
     workspace: Optional[str] = None,
     project_name: Optional[str] = None,
