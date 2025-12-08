@@ -161,12 +161,24 @@ def list_experiments(
             # Apply manual sorting if requested
             if sort_by and sort_order:
                 if sort_by in ["startTime", "endTime"]:
-                    # Sort experiments by the specified field
-                    reverse = sort_order.lower() == "desc"
-                    experiments.sort(
-                        key=lambda exp: getattr(exp, f"{sort_by}_server_timestamp", 0),
-                        reverse=reverse,
-                    )
+                    # Map sort_by parameter to actual attribute name
+                    # "startTime" -> "start_server_timestamp"
+                    # "endTime" -> "end_server_timestamp"
+                    attr_map = {
+                        "startTime": "start_server_timestamp",
+                        "endTime": "end_server_timestamp",
+                    }
+                    attr_name = attr_map.get(sort_by)
+                    if attr_name:
+                        reverse = sort_order.lower() == "desc"
+                        # Use a default of datetime.min for missing timestamps to sort them first
+                        from datetime import datetime as dt
+
+                        default_ts = dt.min
+                        experiments.sort(
+                            key=lambda exp: getattr(exp, attr_name, default_ts),
+                            reverse=reverse,
+                        )
 
             # Apply manual pagination
             if page and page_size:
