@@ -83,14 +83,12 @@ class TestListExperiments:
         assert exp2["created_at"] == "2024-01-02T12:00:00"  # Original timestamp
         assert exp2["description"] is None
 
-        # Verify API was called correctly
+        # Verify API was called correctly (sort params not included when None)
         mock_api.get_experiments.assert_called_once_with(
             workspace="default-workspace",
             project_name=None,
             page=1,
             page_size=10,
-            sort_by=None,
-            sort_order=None,
         )
 
     @patch("comet_mcp.tools.get_comet_api")
@@ -109,8 +107,6 @@ class TestListExperiments:
             project_name=None,
             page=1,
             page_size=10,
-            sort_by=None,
-            sort_order=None,
         )
 
     @patch("comet_mcp.tools.get_comet_api")
@@ -918,14 +914,12 @@ class TestUpdatedListExperiments:
         assert result[0]["id"] == "exp1"
         assert result[0]["name"] == "Filtered Experiment"
 
-        # Verify API was called with project filter
+        # Verify API was called with project filter (sort params not included when None)
         mock_api.get_experiments.assert_called_once_with(
             workspace="default-workspace",
             project_name="smoke-test",
             page=1,
             page_size=10,
-            sort_by=None,
-            sort_order=None,
         )
 
     @patch("comet_mcp.tools.get_comet_api")
@@ -944,8 +938,6 @@ class TestUpdatedListExperiments:
             project_name="smoke-test",
             page=1,
             page_size=10,
-            sort_by=None,
-            sort_order=None,
         )
 
 

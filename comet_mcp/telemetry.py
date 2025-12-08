@@ -14,8 +14,12 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider, SpanExporter, Span
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.sdk.trace import TracerProvider, Span
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    ConsoleSpanExporter,
+    SpanExporter,
+)
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.trace import Status, StatusCode
@@ -36,6 +40,15 @@ _tracer_provider: Optional[TracerProvider] = None
 _logger_provider: Optional[Any] = None
 _initialized = False
 _lock = threading.Lock()
+
+
+def _safe_print(message: str) -> None:
+    """Safely print a message, handling closed stdout/stderr."""
+    try:
+        print(message)
+    except (ValueError, OSError):
+        # stdout/stderr may be closed during shutdown, ignore
+        pass
 
 
 class FileSpanExporter(SpanExporter):
@@ -113,8 +126,8 @@ class FileSpanExporter(SpanExporter):
 
         # Add parent span if available
         if span.parent:
-            parent_context = span.parent.get_span_context()
-            span_dict["parent_span_id"] = format(parent_context.span_id, "016x")
+            # span.parent is already a SpanContext
+            span_dict["parent_span_id"] = format(span.parent.span_id, "016x")
 
         return span_dict
 
@@ -231,7 +244,7 @@ def initialize_telemetry() -> None:
         config = _get_config()
 
         if not config["enabled"]:
-            print("OpenTelemetry is disabled via OTEL_ENABLED=false")
+            _safe_print("OpenTelemetry is disabled via OTEL_ENABLED=false")
             return
 
         # Create resource
@@ -250,7 +263,7 @@ def initialize_telemetry() -> None:
             try:
                 file_exporter = FileSpanExporter(config["traces_file"])
                 _tracer_provider.add_span_processor(BatchSpanProcessor(file_exporter))
-                print(f"OpenTelemetry: Writing traces to {config['traces_file']}")
+                _safe_print(f"OpenTelemetry: Writing traces to {config['traces_file']}")
             except Exception as e:
                 print(f"Warning: Failed to initialize file trace exporter: {e}")
 
@@ -263,7 +276,7 @@ def initialize_telemetry() -> None:
                     headers=headers,
                 )
                 _tracer_provider.add_span_processor(BatchSpanProcessor(opik_exporter))
-                print(
+                _safe_print(
                     f"OpenTelemetry: Sending traces to Opik at {config['opik_endpoint']}"
                 )
             except Exception as e:
@@ -317,7 +330,7 @@ def initialize_telemetry() -> None:
                 print(f"Warning: Failed to initialize logging: {e}")
 
         _initialized = True
-        print("OpenTelemetry initialized successfully")
+        _safe_print("OpenTelemetry initialized successfully")
 
 
 def get_tracer(name: str = "comet-mcp"):
@@ -343,6 +356,6 @@ def shutdown_telemetry() -> None:
                 _logger_provider.shutdown()
 
             _initialized = False
-            print("OpenTelemetry shut down successfully")
+            _safe_print("OpenTelemetry shut down successfully")
         except Exception as e:
-            print(f"Warning: Error during telemetry shutdown: {e}")
+            _safe_print(f"Warning: Error during telemetry shutdown: {e}")

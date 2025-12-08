@@ -109,7 +109,7 @@ def list_experiments(
 
     Args:
         workspace: Workspace name (optional, will lookup the default workspace name if not provided)
-        project_name: Project name to filter experiments (optional)
+        project_name: Project name to filter experiments (optional, default is "general")
         page: get paged results, starting with page 1
         page_size: get this number of experiments at a time
         sort_by: Field to sort by. Must be "startTime" or "endTime" if provided.
@@ -134,14 +134,23 @@ def list_experiments(
             project_name = "general"
 
         if SUPPORTS_PAGED_QUERIES:
-            experiments = api.get_experiments(
-                workspace=target_workspace,
-                project_name=project_name,
-                page=page,
-                page_size=page_size,
-                sort_by=sort_by,
-                sort_order=sort_order,
-            )
+            # Build kwargs for get_experiments, only including sort params if both are provided
+            get_experiments_kwargs = {
+                "workspace": target_workspace,
+                "project_name": project_name,
+                "page": page,
+                "page_size": page_size,
+            }
+            # Only pass sort_by and sort_order if both are provided and valid
+            if sort_by and sort_order:
+                if sort_by in ["startTime", "endTime"] and sort_order.lower() in [
+                    "asc",
+                    "desc",
+                ]:
+                    get_experiments_kwargs["sort_by"] = sort_by
+                    get_experiments_kwargs["sort_order"] = sort_order
+
+            experiments = api.get_experiments(**get_experiments_kwargs)
         else:
             # Get all experiments when paged queries are not supported
             experiments = api.get_experiments(
@@ -878,7 +887,7 @@ def get_project_tags(
 
     Args:
         workspace: Workspace name (optional, will lookup the default workspace name if not provided)
-        project_name: Project name to filter experiments (optional)
+        project_name: Project name to filter experiments (optional, default is "general")
 
     Returns:
         A list of tag names.
@@ -911,7 +920,7 @@ def get_project_logged_item_names(
 
     Args:
         workspace: Workspace name (optional, will lookup the default workspace name if not provided)
-        project_name: Project name to filter experiments (optional)
+        project_name: Project name to filter experiments (optional, default is "general")
 
     Returns:
         A list of names.
@@ -945,7 +954,7 @@ def find_tagged_experiments(
     Args:
         tag: the text of the tag
         workspace: Workspace name (optional, will lookup the default workspace name if not provided)
-        project_name: Project name to filter experiments (optional)
+        project_name: Project name to filter experiments (optional, default is "general")
 
     Returns:
         List containing matching unique experiment identifiers
@@ -994,7 +1003,7 @@ def query_experiments(
         value: the value to compare to the logged value; can be any value; special values are
             "true", "false", "none", or "datetime:ISO-FORMAT-DATETIME"
         workspace: Workspace name (optional, will lookup the default workspace name if not provided)
-        project_name: Project name to filter experiments (optional)
+        project_name: Project name to filter experiments (optional, default is "general")
 
     Returns:
         List containing matching unique experiment identifiers
@@ -1063,7 +1072,7 @@ def _create_query(qv, comparison, value):
             value = None
         elif value.startswith("datetime:"):
             _, iso_format = value.split(":", 1)
-            value = datetime.fromisoformat(is_format)
+            value = datetime.fromisoformat(iso_format)
         elif value.isnumeric():
             value = float(value)
     elif isinstance(value, bool):
@@ -1148,7 +1157,7 @@ def experiment_spreadsheet(
     Args:
         workspace: Workspace name (optional, uses default if not provided).
                    Ignored if experiment_keys is provided.
-        project_name: Project name (optional). Ignored if experiment_keys is provided.
+        project_name: Project name (optional, default is "general"). Ignored if experiment_keys is provided.
         experiment_keys: Optional list of experiment IDs. If provided, workspace and
                         project_name arguments are ignored and only these experiments
                         are exported.
