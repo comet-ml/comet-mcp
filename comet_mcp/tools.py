@@ -1085,8 +1085,11 @@ def _create_query(qv, comparison, value):
         elif value.startswith("datetime:"):
             _, iso_format = value.split(":", 1)
             value = datetime.fromisoformat(iso_format)
-        elif value.isnumeric():
-            value = float(value)
+        else:
+            try:
+                value = float(value)
+            except ValueError:
+                pass
     elif isinstance(value, bool):
         if value is True:
             value = 1
