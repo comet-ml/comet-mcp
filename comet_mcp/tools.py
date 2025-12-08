@@ -1099,13 +1099,13 @@ def _create_query(qv, comparison, value):
     elif comparison == "!=":
         return qv != value
     elif comparison == "<":
-        return qv != value
+        return qv < value
     elif comparison == "<=":
-        return qv != value
+        return qv <= value
     elif comparison == ">":
-        return qv != value
+        return qv > value
     elif comparison == ">=":
-        return qv != value
+        return qv >= value
     elif comparison.lower() == "contains":
         return qv.contains(value)
     elif comparison.lower() == "endswith":
