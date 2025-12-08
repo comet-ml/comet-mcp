@@ -1010,7 +1010,7 @@ def query_experiments(
         name: the name of the logged item; use 'TYPE:name' to distinguish between names
             where 'TYPE' can be "Environment", "Metadata", "Metric", "Other",
             or "Parameter"
-        comparsion: can any of "==", ">", ">=", "<", ">=", "!=", "contains",
+        comparison: can be any of "==", ">", ">=", "<", ">=", "!=", "contains",
             "endswith", or "startswith".
         value: the value to compare to the logged value; can be any value; special values are
             "true", "false", "none", or "datetime:ISO-FORMAT-DATETIME"
