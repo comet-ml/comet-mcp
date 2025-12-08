@@ -70,6 +70,25 @@ export COMET_WORKSPACE=your_workspace_name
 - **Error Handling**: Graceful handling of API failures and missing data
 - **Flexible Filtering**: Filter by workspace, project, or search terms
 - **Rich Metadata**: Includes timestamps, descriptions, and status information
+- **File Resources**: Some tools (like `experiment_spreadsheet`) create CSV files that are available as MCP resources
+
+### MCP Resources
+
+The server provides access to generated files (like CSV exports) through the MCP resources API. When a tool creates a file, it returns a resource URI that can be accessed using the MCP `read_resource` method.
+
+**Accessing Resources:**
+- Tools that create files will return a `resource_uri` in their response
+- Use the MCP `read_resource` method with the URI to read the file content
+- Resources are stored on the server and can be accessed without processing all content through the LLM
+
+**Example:**
+```python
+# After calling experiment_spreadsheet, you'll get a resource_uri
+# Access it using:
+read_resource(uri="file://comet-mcp/experiment_spreadsheet_20251206_103508.csv")
+```
+
+Most MCP clients (like Claude Desktop, Cursor, etc.) will automatically handle resource access when you reference the resource URI in your conversation.
 
 ## Usage
 

@@ -210,19 +210,39 @@ class ToolRegistry:
                     message = result.get("message", "Operation completed")
                     resource_uri = result["resource_uri"]
                     filename = result.get("filename", "unknown")
-                    
+                    file_path = result.get("file_path")
+
                     response_text = f"""{message}
 
-The file has been created and is available as an MCP resource:
-- Resource URI: {resource_uri}
+**File Created Successfully:**
 - Filename: {filename}
+- Resource URI: {resource_uri}"""
 
-You can access this file through the MCP resources API. The file contains the exported data and does not need to be processed by the LLM."""
-                    
+                    if file_path:
+                        response_text += f"\n- File Location: {file_path}"
+
+                    response_text += f"""
+
+**How to Access the File:**
+
+**Option 1: Via MCP Resource (Recommended for Chatbots)**
+The file is available as an MCP resource. Your chatbot can access it using the MCP `read_resource` method:
+- Use the resource URI: `{resource_uri}`
+- Most MCP clients (Claude Desktop, Cursor, etc.) can automatically read resources when you reference the URI
+
+**Option 2: Direct File Access**
+The file has been saved to: `{file_path if file_path else 'temporary directory'}`
+You can access it directly from your file system at this location.
+
+The file contains the exported data in CSV format."""
+
                     # Include full result as JSON for reference
                     return [
                         {"type": "text", "text": response_text},
-                        {"type": "text", "text": f"\nFull result:\n{json.dumps(result, indent=2)}"}
+                        {
+                            "type": "text",
+                            "text": f"\nFull result:\n{json.dumps(result, indent=2)}",
+                        },
                     ]
                 else:
                     # For structured data, return as JSON

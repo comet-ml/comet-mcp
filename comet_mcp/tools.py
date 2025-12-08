@@ -9,6 +9,7 @@ from datetime import datetime
 import sys
 import csv
 import io
+import json
 from comet_mcp.utils import format_datetime, supports_paged_queries
 from comet_mcp.session import get_comet_api, get_session_context
 from comet_mcp.cache import cached
@@ -1059,24 +1060,23 @@ def _clear_cache(func_name: Optional[str] = None) -> Dict[str, Any]:
         }
 
 
-def _initialize():
-    from comet_mcp.session import initialize_session
-
-    initialize_session()
-
-
-def export_project_experiments_to_csv(
-    project_name: str, workspace: Optional[str] = None, filename: Optional[str] = None
+def experiment_spreadsheet(
+    workspace: Optional[str] = None,
+    project_name: Optional[str] = None,
+    experiment_keys: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
-    Export top-level details of all experiments in a project to a CSV file.
-    The CSV file is made available as an MCP resource that can be accessed
-    without the LLM needing to process the data.
+    Export experiment details to a CSV file with workspace, project_name, experiment name,
+    duration, metrics, and parameters. The CSV file is made available as an MCP resource
+    that can be accessed without the LLM needing to process the data.
 
     Args:
-        project_name: Name of the project to export experiments from
-        workspace: Workspace name (optional, uses default if not provided)
-        filename: Optional custom filename for the CSV. If not provided, generates one.
+        workspace: Workspace name (optional, uses default if not provided).
+                   Ignored if experiment_keys is provided.
+        project_name: Project name (optional). Ignored if experiment_keys is provided.
+        experiment_keys: Optional list of experiment IDs. If provided, workspace and
+                        project_name arguments are ignored and only these experiments
+                        are exported.
 
     Returns:
         Dictionary containing:
@@ -1088,53 +1088,144 @@ def export_project_experiments_to_csv(
     """
     try:
         with get_comet_api() as api:
-            # Determine target workspace
-            if workspace:
-                target_workspace = workspace
+            experiment_ids = []
+
+            # If experiment_keys is provided, use those and ignore workspace/project_name
+            if experiment_keys:
+                experiment_ids = experiment_keys
             else:
-                target_workspace = get_default_workspace()
+                # Determine target workspace
+                if workspace:
+                    target_workspace = workspace
+                else:
+                    target_workspace = get_default_workspace()
 
-            # Validate project exists
-            validation = validate_project(project_name, target_workspace)
-            if not validation.get("exists", False):
+                if project_name is None:
+                    project_name = "general"
+
+                # Validate project exists
+                validation = validate_project(project_name, target_workspace)
+                if not validation.get("exists", False):
+                    return {
+                        "status": "error",
+                        "message": validation.get("error", "Project not found"),
+                        "resource_uri": None,
+                        "filename": None,
+                        "experiment_count": 0,
+                    }
+
+                # Get all experiments for the project
+                experiments_metadata = api._get_project_experiments(
+                    target_workspace, project_name
+                )
+                if experiments_metadata:
+                    experiment_ids = [
+                        exp.get("experimentKey", "")
+                        for exp in experiments_metadata.values()
+                        if exp.get("experimentKey")
+                    ]
+                else:
+                    experiment_ids = []
+
+            if not experiment_ids:
                 return {
                     "status": "error",
-                    "message": validation.get("error", "Project not found"),
+                    "message": "No experiments found to export",
                     "resource_uri": None,
                     "filename": None,
                     "experiment_count": 0,
                 }
 
-            # Get all experiments for the project
-            experiments = api._get_project_experiments(target_workspace, project_name)
-            count = len(experiments) if experiments else 0
-
-            if count == 0:
-                return {
-                    "status": "error",
-                    "message": f"No experiments found in project '{project_name}'",
-                    "resource_uri": None,
-                    "filename": None,
-                    "experiment_count": 0,
-                }
-
-            # Prepare CSV data
+            # Prepare CSV data by fetching full experiment details
             csv_rows = []
-            for exp in experiments.values():
-                row = {
-                    "experiment_id": exp.get("experimentKey", ""),
-                    "name": exp.get("experimentName", ""),
-                    "status": _get_state(exp),
-                    "created_at": format_datetime(exp.get("startTimeMillis")),
-                    "updated_at": format_datetime(exp.get("endTimeMillis")),
-                    "duration_seconds": (
-                        (exp.get("endTimeMillis", 0) - exp.get("startTimeMillis", 0))
-                        / 1000.0
-                        if exp.get("endTimeMillis")
-                        else None
-                    ),
-                }
-                csv_rows.append(row)
+            for exp_id in experiment_ids:
+                try:
+                    experiment = api.get_experiment_by_key(exp_id)
+                    if not experiment:
+                        continue
+
+                    # Get workspace and project_name from experiment if available
+                    exp_workspace = getattr(experiment, "workspace", None)
+                    exp_project = getattr(experiment, "project_name", None)
+
+                    # If not available from experiment object, try to extract from URL
+                    if not exp_workspace or not exp_project:
+                        try:
+                            # URL format: https://www.comet.com/{workspace}/{project_name}/...
+                            url = getattr(experiment, "url", "")
+                            if url and "/" in url:
+                                parts = url.split("/")
+                                if len(parts) >= 4:
+                                    # Find the workspace and project in the URL
+                                    for i, part in enumerate(parts):
+                                        if "comet.com" in part or "comet.ml" in part:
+                                            if i + 2 < len(parts):
+                                                exp_workspace = (
+                                                    exp_workspace or parts[i + 1]
+                                                )
+                                                exp_project = (
+                                                    exp_project or parts[i + 2]
+                                                )
+                                            break
+                        except Exception:
+                            pass
+
+                    # If still not available and we have context, use it
+                    if not exp_workspace and workspace:
+                        exp_workspace = workspace
+                    elif not exp_workspace:
+                        exp_workspace = get_default_workspace()
+
+                    if not exp_project and project_name:
+                        exp_project = project_name
+
+                    # Calculate duration
+                    start_time = experiment.start_server_timestamp
+                    end_time = experiment.end_server_timestamp or start_time
+                    duration_seconds = None
+                    if start_time and end_time:
+                        # Check if timestamps are in milliseconds (> 1e12) or seconds
+                        if start_time > 1e12 or end_time > 1e12:
+                            # Timestamps are in milliseconds
+                            duration_seconds = (end_time - start_time) / 1000.0
+                        else:
+                            # Timestamps are in seconds
+                            duration_seconds = end_time - start_time
+
+                    # Get metrics
+                    metrics_summary = experiment.get_metrics_summary()
+                    metrics_dict = {}
+                    if metrics_summary:
+                        for metric in metrics_summary:
+                            metric_name = metric.get("name", "")
+                            metric_value = metric.get("valueCurrent", 0)
+                            if metric_name:
+                                metrics_dict[metric_name] = metric_value
+
+                    # Get parameters
+                    params_summary = experiment.get_parameters_summary()
+                    params_dict = {}
+                    if params_summary:
+                        for param in params_summary:
+                            param_name = param.get("name", "")
+                            param_value = param.get("valueCurrent", "")
+                            if param_name:
+                                params_dict[param_name] = param_value
+
+                    # Create row
+                    row = {
+                        "workspace": exp_workspace or "",
+                        "project_name": exp_project or "",
+                        "experiment_name": experiment.name or "",
+                        "duration_seconds": duration_seconds,
+                        "metrics": json.dumps(metrics_dict) if metrics_dict else "",
+                        "parameters": json.dumps(params_dict) if params_dict else "",
+                    }
+                    csv_rows.append(row)
+
+                except Exception as e:
+                    # Skip experiments that fail to load
+                    continue
 
             # Generate CSV content
             if not csv_rows:
@@ -1148,18 +1239,31 @@ def export_project_experiments_to_csv(
 
             # Create CSV in memory
             output = io.StringIO()
-            fieldnames = list(csv_rows[0].keys())
+            fieldnames = [
+                "workspace",
+                "project_name",
+                "experiment_name",
+                "duration_seconds",
+                "metrics",
+                "parameters",
+            ]
             writer = csv.DictWriter(output, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(csv_rows)
             csv_content = output.getvalue()
             output.close()
 
-            # Generate filename if not provided
-            if filename is None:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                safe_project = "".join(c for c in project_name if c.isalnum() or c in ("-", "_"))
-                filename = f"experiments_{safe_project}_{timestamp}.csv"
+            # Generate filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            if experiment_keys:
+                filename = f"experiment_spreadsheet_{timestamp}.csv"
+            else:
+                safe_project = "".join(
+                    c
+                    for c in (project_name or "experiments")
+                    if c.isalnum() or c in ("-", "_")
+                )
+                filename = f"experiment_spreadsheet_{safe_project}_{timestamp}.csv"
 
             # Register file as resource
             resource_manager = get_resource_manager()
@@ -1167,12 +1271,16 @@ def export_project_experiments_to_csv(
                 filename, csv_content.encode("utf-8")
             )
 
+            # Get the actual file path
+            file_path = resource_manager.get_file_path(resource_uri)
+
             return {
                 "status": "success",
-                "message": f"Exported {count} experiments to CSV",
+                "message": f"Exported {len(csv_rows)} experiments to CSV",
                 "resource_uri": resource_uri,
                 "filename": filename,
-                "experiment_count": count,
+                "file_path": str(file_path) if file_path else None,
+                "experiment_count": len(csv_rows),
             }
 
     except Exception as e:
@@ -1183,3 +1291,9 @@ def export_project_experiments_to_csv(
             "filename": None,
             "experiment_count": 0,
         }
+
+
+def _initialize():
+    from comet_mcp.session import initialize_session
+
+    initialize_session()
