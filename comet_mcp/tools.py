@@ -1113,7 +1113,7 @@ def _create_query(qv, comparison, value):
     elif comparison.lower() == "startswith":
         return qv.startsWith(value)
     else:
-        raise Exception(f"Unknown comparision '{comparison}'")
+        raise Exception(f"Unknown comparison '{comparison}'")
 
 
 def _get_cache_info() -> Dict[str, Any]:
