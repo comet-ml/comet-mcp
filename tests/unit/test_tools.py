@@ -17,6 +17,8 @@ from comet_mcp.tools import (
     get_session_info,
     get_experiment_metric_data,
     get_all_experiments_summary,
+    get_experiment_code,
+    get_experiment_output,
 )
 from comet_mcp.session import session_context
 
@@ -915,6 +917,126 @@ class TestGetAllExperimentsSummary:
 
         with pytest.raises(Exception) as exc_info:
             get_all_experiments_summary("smoke-test")
+
+        assert "API connection failed" in str(exc_info.value)
+
+
+class TestGetExperimentCode:
+    """Test cases for get_experiment_code tool."""
+
+    def setup_method(self):
+        """Set up test fixtures before each test method."""
+        session_context.reset()
+        session_context.initialize()
+        # Clear cache to avoid test interference
+        from comet_mcp.tools import _clear_cache
+
+        _clear_cache()
+
+    @patch("comet_mcp.tools.get_comet_api")
+    def test_get_experiment_code_success(self, mock_get_api):
+        """Test successful retrieval of experiment code."""
+        mock_experiment = Mock()
+        mock_experiment.get_code.return_value = "print('Hello, World!')\n"
+
+        mock_api = Mock()
+        mock_api.get_experiment_by_key.return_value = mock_experiment
+        mock_get_api.return_value.__enter__.return_value = mock_api
+
+        result = get_experiment_code("exp123")
+
+        assert isinstance(result, dict)
+        assert "code" in result
+        assert result["code"] == "print('Hello, World!')\n"
+        mock_api.get_experiment_by_key.assert_called_once_with("exp123")
+
+    @patch("comet_mcp.tools.get_comet_api")
+    def test_get_experiment_code_empty(self, mock_get_api):
+        """Test retrieval when no code was logged."""
+        mock_experiment = Mock()
+        mock_experiment.get_code.return_value = ""
+
+        mock_api = Mock()
+        mock_api.get_experiment_by_key.return_value = mock_experiment
+        mock_get_api.return_value.__enter__.return_value = mock_api
+
+        result = get_experiment_code("exp123")
+
+        assert isinstance(result, dict)
+        assert "code" in result
+        assert result["code"] == ""
+
+
+class TestGetExperimentOutput:
+    """Test cases for get_experiment_output tool."""
+
+    def setup_method(self):
+        """Set up test fixtures before each test method."""
+        session_context.reset()
+        session_context.initialize()
+        # Clear cache to avoid test interference
+        from comet_mcp.tools import _clear_cache
+
+        _clear_cache()
+
+    @patch("comet_mcp.tools.get_comet_api")
+    def test_get_experiment_output_success(self, mock_get_api):
+        """Test successful retrieval of experiment output."""
+        mock_experiment = Mock()
+        mock_experiment.get_output.return_value = "Epoch 1/10\nLoss: 0.5\nEpoch 2/10\nLoss: 0.3\n"
+
+        mock_api = Mock()
+        mock_api.get_experiment_by_key.return_value = mock_experiment
+        mock_get_api.return_value.__enter__.return_value = mock_api
+
+        result = get_experiment_output("exp123")
+
+        assert isinstance(result, dict)
+        assert "output" in result
+        assert result["output"] == "Epoch 1/10\nLoss: 0.5\nEpoch 2/10\nLoss: 0.3\n"
+        mock_api.get_experiment_by_key.assert_called_once_with("exp123")
+
+    @patch("comet_mcp.tools.get_comet_api")
+    def test_get_experiment_output_empty(self, mock_get_api):
+        """Test retrieval when no output was logged."""
+        mock_experiment = Mock()
+        mock_experiment.get_output.return_value = ""
+
+        mock_api = Mock()
+        mock_api.get_experiment_by_key.return_value = mock_experiment
+        mock_get_api.return_value.__enter__.return_value = mock_api
+
+        result = get_experiment_output("exp123")
+
+        assert isinstance(result, dict)
+        assert "output" in result
+        assert result["output"] == ""
+
+    @patch("comet_mcp.tools.get_comet_api")
+    def test_get_experiment_output_with_stderr(self, mock_get_api):
+        """Test retrieval of output including stderr."""
+        mock_experiment = Mock()
+        mock_output = "Training started...\nWarning: GPU not found\nTraining on CPU\nEpoch 1 complete\n"
+        mock_experiment.get_output.return_value = mock_output
+
+        mock_api = Mock()
+        mock_api.get_experiment_by_key.return_value = mock_experiment
+        mock_get_api.return_value.__enter__.return_value = mock_api
+
+        result = get_experiment_output("exp456")
+
+        assert isinstance(result, dict)
+        assert "output" in result
+        assert result["output"] == mock_output
+        assert "Warning: GPU not found" in result["output"]
+
+    @patch("comet_mcp.tools.get_comet_api")
+    def test_get_experiment_output_api_error(self, mock_get_api):
+        """Test handling of API errors."""
+        mock_get_api.side_effect = Exception("API connection failed")
+
+        with pytest.raises(Exception) as exc_info:
+            get_experiment_output("exp123")
 
         assert "API connection failed" in str(exc_info.value)
 

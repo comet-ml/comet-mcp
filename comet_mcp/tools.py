@@ -240,6 +240,23 @@ def get_experiment_code(experiment_id: str) -> Dict[str, str]:
 
 
 @_instrument_tool
+def get_experiment_output(experiment_id: str) -> Dict[str, str]:
+    """
+    Get the raw training logging (stdout/stderr) for a specific experiment.
+
+    Args:
+        experiment_id: The ID of the experiment to retrieve
+
+    Returns:
+        Dictionary containing:
+        - output: String containing the complete stdout/stderr output that was logged for this experiment
+    """
+    with get_comet_api() as api:
+        experiment = api.get_experiment_by_key(experiment_id)
+        return {"output": experiment.get_output()}
+
+
+@_instrument_tool
 def get_experiment_metric_data(
     experiment_ids: List[str], metric_names: List[str], x_axis: Optional[str] = None
 ) -> Dict[str, Any]:
