@@ -1409,6 +1409,126 @@ def experiment_spreadsheet(
         }
 
 
+@_instrument_tool
+@cached(ttl_seconds=60)
+def get_experiment_assets(
+    experiment_id: str,
+    name_filter: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    List assets logged to a Comet experiment, optionally filtered by partial name.
+    Use this to discover what files have been logged — HTA traces, models, images,
+    or other artifacts. Pass name_filter to narrow results (e.g. "hta_results").
+
+    Args:
+        experiment_id: The ID of the experiment
+        name_filter: Optional substring to filter asset names (case-insensitive)
+
+    Returns:
+        Dictionary containing:
+        - experiment_id: The experiment ID
+        - assets: List of asset metadata with name, size, type, asset_id
+        - count: Number of matching assets
+    """
+    with get_comet_api() as api:
+        experiment = api.get_experiment_by_key(experiment_id)
+        if not experiment:
+            raise Exception(f"Experiment '{experiment_id}' not found.")
+
+        asset_list = experiment.get_asset_list(asset_type="all") or []
+
+        if name_filter:
+            filter_lower = name_filter.lower()
+            asset_list = [
+                a for a in asset_list
+                if filter_lower in (a.get("fileName") or "").lower()
+            ]
+
+        assets = [
+            {
+                "name": a.get("fileName", ""),
+                "size": a.get("fileSize", 0),
+                "type": a.get("type", ""),
+                "asset_id": a.get("assetId", ""),
+            }
+            for a in asset_list
+        ]
+
+        return {
+            "experiment_id": experiment_id,
+            "assets": assets,
+            "count": len(assets),
+        }
+
+
+@_instrument_tool
+def analyze_experiment_asset(
+    experiment_id: str,
+    name_filter: str,
+) -> Dict[str, Any]:
+    """
+    Download and analyze an experiment asset matched by partial name. Automatically
+    applies specialized analysis based on asset type — for example, running
+    HolisticTraceAnalysis on *_hta_results.json.gz files to diagnose GPU utilization,
+    communication bottlenecks, and training stragglers in distributed runs.
+
+    Use get_experiment_assets first to discover available asset names, then call
+    this tool with a name_filter that uniquely identifies the asset you want.
+
+    Args:
+        experiment_id: The ID of the experiment
+        name_filter: Substring to match against asset filenames (case-insensitive).
+                     The first matching asset will be downloaded and analyzed.
+
+    Returns:
+        For HTA trace assets: summary with temporal breakdown, comm/comp overlap,
+        potential stragglers, and top GPU kernels by time.
+        For unrecognized assets: basic metadata (name, size, type).
+    """
+    from comet_mcp.asset_handlers import get_handler
+
+    with get_comet_api() as api:
+        experiment = api.get_experiment_by_key(experiment_id)
+        if not experiment:
+            raise Exception(f"Experiment '{experiment_id}' not found.")
+
+        asset_list = experiment.get_asset_list(asset_type="all") or []
+        filter_lower = name_filter.lower()
+        matching = [
+            a for a in asset_list
+            if filter_lower in (a.get("fileName") or "").lower()
+        ]
+
+        if not matching:
+            return {
+                "error": f"No asset matching '{name_filter}' found.",
+                "available_assets": [a.get("fileName", "") for a in asset_list[:10]],
+            }
+
+        asset_meta = matching[0]
+        asset_name: str = asset_meta.get("fileName", "")
+        asset_id: str = asset_meta.get("assetId", "")
+
+        handler = get_handler(asset_name)
+        if handler is None:
+            return {
+                "asset_name": asset_name,
+                "asset_id": asset_id,
+                "size": asset_meta.get("fileSize", 0),
+                "type": asset_meta.get("type", ""),
+                "message": (
+                    "No specialized handler for this asset type. "
+                    "Raw metadata returned."
+                ),
+            }
+
+        content = experiment.get_asset(asset_id, return_type="binary")
+        if not isinstance(content, bytes):
+            return {"error": f"Unexpected content type for asset '{asset_name}'."}
+
+        return handler(content, asset_name)
+
+
 def _initialize():
     from comet_mcp.session import initialize_session
 
