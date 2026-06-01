@@ -74,7 +74,7 @@ class TestListExperiments:
         assert exp1["id"] == "exp1"
         assert exp1["name"] == "Test Experiment 1"
         assert exp1["status"] == "completed"
-        assert exp1["created_at"] == "2024-01-01T12:00:00"  # Original timestamp
+        assert exp1["created_at"] == "2024-01-01T12:00:00+00:00"  # UTC
         assert exp1["description"] == "Test description 1"
 
         # Verify second experiment
@@ -83,7 +83,7 @@ class TestListExperiments:
         assert exp2["id"] == "exp2"
         assert exp2["name"] == "Test Experiment 2"
         assert exp2["status"] == "running"
-        assert exp2["created_at"] == "2024-01-02T12:00:00"  # Original timestamp
+        assert exp2["created_at"] == "2024-01-02T12:00:00+00:00"  # UTC
         assert exp2["description"] is None
 
         # Verify API was called correctly (project_name defaults to "general" if None)
@@ -112,9 +112,10 @@ class TestListExperiments:
 
         result = list_experiments(workspace="test-workspace")
 
-        # When no experiments, function returns empty list
-        assert isinstance(result, list)
-        assert len(result) == 0
+        # When no experiments, function returns a dict with an empty list
+        assert isinstance(result, dict)
+        assert result["workspace"] == "test-workspace"
+        assert result["experiments"] == []
 
         # Verify API was called (project_name defaults to "general" if None)
         from comet_mcp.tools import SUPPORTS_PAGED_QUERIES
@@ -142,8 +143,8 @@ class TestListExperiments:
 
         result = list_experiments()
 
-        assert isinstance(result, list)
-        assert len(result) == 0
+        assert isinstance(result, dict)
+        assert result["experiments"] == []
 
     @patch("comet_mcp.tools.get_comet_api")
     def test_list_experiments_api_error(self, mock_get_api):
@@ -268,8 +269,8 @@ class TestGetExperimentDetails:
         assert result["id"] == "exp123"
         assert result["name"] == "Detailed Experiment"
         assert result["status"] == "completed"
-        assert result["created_at"] == "2024-01-01T12:00:00"
-        assert result["updated_at"] == "2024-01-02T12:00:00"
+        assert result["created_at"] == "2024-01-01T12:00:00+00:00"
+        assert result["updated_at"] == "2024-01-02T12:00:00+00:00"
         assert result["description"] == "Detailed description"
 
         # Verify metrics
@@ -875,16 +876,15 @@ class TestGetAllExperimentsSummary:
         assert exp1["id"] == "exp1"
         assert exp1["name"] == "Project Experiment 1"
         assert exp1["status"] == "finished"
-        # Timestamps render in the local timezone; compute the expectation the
-        # same way the tool does so the test is timezone-independent.
-        assert exp1["created_at"] == datetime.fromtimestamp(1704110400).isoformat()
+        # Timestamps always render in UTC with an explicit offset.
+        assert exp1["created_at"] == "2024-01-01T12:00:00+00:00"
 
         # Verify second experiment
         exp2 = result["experiments"][1]
         assert exp2["id"] == "exp2"
         assert exp2["name"] == "Project Experiment 2"
         assert exp2["status"] == "running"
-        assert exp2["created_at"] == datetime.fromtimestamp(1704196800).isoformat()
+        assert exp2["created_at"] == "2024-01-02T12:00:00+00:00"
 
         # Verify API was called correctly
         mock_api._get_project_experiments.assert_called_once_with(
@@ -1114,8 +1114,8 @@ class TestUpdatedListExperiments:
 
         result = list_experiments(workspace="test-workspace", project_name="smoke-test")
 
-        assert isinstance(result, list)
-        assert len(result) == 0
+        assert isinstance(result, dict)
+        assert result["experiments"] == []
         mock_api.get_experiments.assert_called_once_with(
             workspace="test-workspace",
             project_name="smoke-test",

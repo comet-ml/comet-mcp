@@ -5,7 +5,7 @@ Utility module for MCP server with automatic parameter generation from Python fu
 
 import inspect
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Callable, Optional, Union
 from mcp import Tool
 
@@ -271,6 +271,11 @@ def format_datetime(dt) -> str:
     """
     Format a datetime object, timestamp, or other date-like object as a readable ISO string.
 
+    Timestamps are absolute instants (UTC epoch), and Comet server timestamps
+    are UTC, so the result is always rendered in UTC with an explicit offset
+    (e.g. "2024-01-01T12:00:00+00:00"). This keeps output unambiguous and
+    independent of the timezone the server happens to run in.
+
     Args:
         dt: The datetime object, timestamp (int/float), or other date-like object to format
 
@@ -280,8 +285,13 @@ def format_datetime(dt) -> str:
     if dt is None:
         return "Unknown"
 
-    # Handle datetime objects
+    # Handle datetime objects: normalize to UTC. Naive datetimes are assumed to
+    # already be UTC (as Comet server timestamps are).
     if isinstance(dt, datetime):
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
         return dt.isoformat()
 
     # Handle Unix timestamps (int or float)
@@ -290,8 +300,8 @@ def format_datetime(dt) -> str:
             # Check if timestamp is in milliseconds (13 digits) or seconds (10 digits)
             if dt > 1e12:  # Likely milliseconds
                 dt = dt / 1000.0
-            # Convert Unix timestamp to datetime
-            dt_obj = datetime.fromtimestamp(dt)
+            # Convert Unix timestamp to datetime in UTC
+            dt_obj = datetime.fromtimestamp(dt, tz=timezone.utc)
             return dt_obj.isoformat()
         except (ValueError, OSError):
             # If timestamp conversion fails, return the raw value
