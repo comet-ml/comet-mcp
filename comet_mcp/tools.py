@@ -102,7 +102,7 @@ def list_experiments(
     page_size: Optional[int] = 10,
     sort_by: Optional[str] = None,
     sort_order: Optional[str] = None,
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
     List recent experiments from Comet ML. Typically, don't show the
     user the experiment_id unless they ask to see it.
@@ -117,12 +117,16 @@ def list_experiments(
             Required when page, page_size, and sort_by are all specified.
 
     Returns:
-        List of dictionaries containing experiment details:
-        - id: Unique experiment identifier
-        - name: Human-readable experiment name
-        - status: Current experiment state (e.g., "running", "finished")
-        - created_at: Formatted timestamp when experiment was created
-        - description: Optional experiment description if available
+        Dictionary containing:
+        - workspace: The workspace the experiments were listed from
+        - project: The project the experiments were listed from
+        - experiments: List of dictionaries containing experiment details
+          (empty if no experiments match):
+            - id: Unique experiment identifier
+            - name: Human-readable experiment name
+            - status: Current experiment state (e.g., "running", "finished")
+            - created_at: Formatted timestamp when experiment was created
+            - description: Optional experiment description if available
     """
     with get_comet_api() as api:
         if workspace:
@@ -186,15 +190,12 @@ def list_experiments(
                 end_idx = start_idx + page_size
                 experiments = experiments[start_idx:end_idx]
 
-        if not experiments:
-            return []
-
-        result = {
+        result: Dict[str, Any] = {
             "workspace": target_workspace,
             "project": project_name,
             "experiments": [],
         }
-        for exp in experiments:
+        for exp in experiments or []:
             result["experiments"].append(
                 {
                     "id": exp.id,
