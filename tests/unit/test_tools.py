@@ -246,8 +246,14 @@ class TestGetExperimentDetails:
             {"name": "batch_size", "valueCurrent": 32},
         ]
 
+        # Mock others summary
+        mock_others_summary = [
+            {"name": "git_branch", "valueCurrent": "main"},
+        ]
+
         mock_experiment.get_metrics_summary.return_value = mock_metrics_summary
         mock_experiment.get_parameters_summary.return_value = mock_params_summary
+        mock_experiment.get_others_summary.return_value = mock_others_summary
 
         # Mock API
         mock_api = Mock()
@@ -282,6 +288,12 @@ class TestGetExperimentDetails:
         assert result["parameters"][1]["name"] == "batch_size"
         assert result["parameters"][1]["value"] == 32
 
+        # Verify others
+        assert isinstance(result["others"], list)
+        assert len(result["others"]) == 1
+        assert result["others"][0]["name"] == "git_branch"
+        assert result["others"][0]["value"] == "main"
+
     @patch("comet_mcp.tools.get_comet_api")
     def test_get_experiment_details_not_found(self, mock_get_api):
         """Test handling when experiment is not found."""
@@ -307,6 +319,7 @@ class TestGetExperimentDetails:
         mock_experiment.description = None
         mock_experiment.get_metrics_summary.return_value = None
         mock_experiment.get_parameters_summary.return_value = None
+        mock_experiment.get_others_summary.return_value = None
 
         mock_api = Mock()
         mock_api.get_experiment_by_key.return_value = mock_experiment
@@ -316,6 +329,7 @@ class TestGetExperimentDetails:
 
         assert result["metrics"] == []
         assert result["parameters"] == []
+        assert result["others"] == []
         assert result["description"] is None
 
 
@@ -616,7 +630,7 @@ class TestStructuredDataTypes:
         mock_get_api.return_value.__enter__.return_value = mock_api
 
         result = list_experiments()
-        exp_info = result[0]
+        exp_info = result["experiments"][0]
 
         # Verify all required fields exist
         assert "id" in exp_info
@@ -649,6 +663,7 @@ class TestStructuredDataTypes:
         mock_experiment.description = "Test description"
         mock_experiment.get_metrics_summary.return_value = []
         mock_experiment.get_parameters_summary.return_value = []
+        mock_experiment.get_others_summary.return_value = []
         mock_api.get_experiment_by_key.return_value = mock_experiment
         mock_get_api.return_value.__enter__.return_value = mock_api
 
@@ -664,6 +679,7 @@ class TestStructuredDataTypes:
             "description",
             "metrics",
             "parameters",
+            "others",
         ]
         for field in required_fields:
             assert field in result
@@ -676,6 +692,7 @@ class TestStructuredDataTypes:
         assert isinstance(result["updated_at"], str)
         assert isinstance(result["metrics"], list)
         assert isinstance(result["parameters"], list)
+        assert isinstance(result["others"], list)
         assert result["description"] is None or isinstance(result["description"], str)
 
     @patch("comet_mcp.tools.get_comet_api")
@@ -858,14 +875,16 @@ class TestGetAllExperimentsSummary:
         assert exp1["id"] == "exp1"
         assert exp1["name"] == "Project Experiment 1"
         assert exp1["status"] == "finished"
-        assert exp1["created_at"] == "2024-01-01T07:00:00"  # Timezone converted
+        # Timestamps render in the local timezone; compute the expectation the
+        # same way the tool does so the test is timezone-independent.
+        assert exp1["created_at"] == datetime.fromtimestamp(1704110400).isoformat()
 
         # Verify second experiment
         exp2 = result["experiments"][1]
         assert exp2["id"] == "exp2"
         assert exp2["name"] == "Project Experiment 2"
         assert exp2["status"] == "running"
-        assert exp2["created_at"] == "2024-01-02T07:00:00"  # Timezone converted
+        assert exp2["created_at"] == datetime.fromtimestamp(1704196800).isoformat()
 
         # Verify API was called correctly
         mock_api._get_project_experiments.assert_called_once_with(
@@ -1071,10 +1090,12 @@ class TestUpdatedListExperiments:
 
         result = list_experiments(project_name="smoke-test")
 
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert result[0]["id"] == "exp1"
-        assert result[0]["name"] == "Filtered Experiment"
+        assert isinstance(result, dict)
+        assert result["workspace"] == "default-workspace"
+        assert result["project"] == "smoke-test"
+        assert len(result["experiments"]) == 1
+        assert result["experiments"][0]["id"] == "exp1"
+        assert result["experiments"][0]["name"] == "Filtered Experiment"
 
         # Verify API was called with project filter (sort params not included when None)
         mock_api.get_experiments.assert_called_once_with(
