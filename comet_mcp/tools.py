@@ -1481,8 +1481,10 @@ def analyze_experiment_asset(
                      The first matching asset will be downloaded and analyzed.
 
     Returns:
-        For HTA trace assets: summary with temporal breakdown, comm/comp overlap,
-        potential stragglers, and top GPU kernels by time.
+        For HTA trace assets: when the asset is small enough, the raw trace JSON
+        is returned directly (format "raw_trace"); otherwise a summary with
+        temporal breakdown, comm/comp overlap, potential stragglers, and top GPU
+        kernels by time.
         For unrecognized assets: basic metadata (name, size, type).
     """
     from comet_mcp.asset_handlers import get_handler
