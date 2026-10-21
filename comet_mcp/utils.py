@@ -122,6 +122,8 @@ class ToolRegistry:
             elif annotation.__origin__ is list:
                 # Handle List[str], List[int], etc.
                 return "array"
+            elif annotation.__origin__ is dict:
+                return "object"
 
         # Handle basic types
         type_mapping = {
@@ -137,6 +139,12 @@ class ToolRegistry:
 
     def _get_array_items_schema(self, annotation: Any) -> Dict[str, Any]:
         """Generate items schema for array types."""
+        # Optional[List[X]]: look inside the Optional for the list
+        if getattr(annotation, "__origin__", None) is Union:
+            non_none_args = [arg for arg in annotation.__args__ if arg != type(None)]
+            if non_none_args:
+                annotation = non_none_args[0]
+
         if hasattr(annotation, "__args__") and annotation.__args__:
             # Handle List[SomeType] - get the type of items
             item_type = annotation.__args__[0]

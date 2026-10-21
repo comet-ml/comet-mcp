@@ -1532,6 +1532,379 @@ def analyze_experiment_asset(
         return handler(content, asset_name)
 
 
+# What panel code can rely on; shared by the JavaScript panel tools' docstrings.
+_JS_PANEL_GUIDE = """
+    A JavaScript panel runs in a sandboxed iframe with the Comet JS SDK. Its code
+    defines one class extending Comet.Panel:
+
+        class MyPanel extends Comet.Panel {
+          setup() {
+            this.options = { metrics: ['loss'] };  // optional defaults
+          }
+          async draw(experimentKeys, projectId) {
+            this.plot({ data: [], layout: {} });  // draw empty while loading
+            const results = await this.api.experimentMetricsForChart(
+              experimentKeys, this.options.metrics);
+            const data = [];
+            for (const key of Object.keys(results)) {
+              for (const m of results[key].metrics) {
+                data.push({
+                  type: 'scatter', mode: 'lines',
+                  name: results[key].experimentName || key,
+                  x: m.steps, y: m.values,  // or m.epochs, m.timestamps, m.durations
+                  line: { color: this.getColor(key) }
+                });
+              }
+            }
+            this.plot({ data, layout: {} });
+          }
+        }
+
+    - draw() is called with the keys of the experiments shown on the dashboard.
+    - this.api is the Comet JS SDK (e.g. experimentMetricsForChart,
+      experimentParameters, experimentOther), authenticated with the project's
+      token.
+    - this.plot({data, layout}) hands a Plotly figure to the dashboard, which
+      draws it like its built-in charts. Only the scatter (including lines),
+      bar, box, violin and parcoords trace types are available, and Plotly
+      itself (Plotly.newPlot etc.) cannot be called. The layout already has the
+      dashboard's look, with no title or legend; add showlegend: true if needed.
+    - A panel that never calls this.plot shows its own HTML instead, with
+      document.getElementById('chart-mount') as the default container.
+    - this.getColor(experimentKey) gives the experiment's dashboard color.
+"""
+
+
+def _views_module() -> Any:
+    try:
+        from comet_ml import views
+    except ImportError:
+        views = None
+    if not hasattr(views, "javascript_panel"):
+        raise Exception(
+            "JavaScript panels need a newer comet_ml SDK, with "
+            "comet_ml.views.javascript_panel; upgrade comet_ml."
+        )
+    return views
+
+
+def _resolve_workspace(workspace: Optional[str]) -> str:
+    return workspace if workspace else get_default_workspace()
+
+
+def _find_view(api: Any, workspace: str, project_name: str, view_id: str) -> Any:
+    for view in api.get_views(workspace, project_name):
+        if view.template_id == view_id:
+            return view
+    raise Exception(
+        f"View '{view_id}' not found in project '{workspace}/{project_name}'. "
+        "Use list_views to find view ids."
+    )
+
+
+def _view_sections(view: Any) -> List[Dict[str, Any]]:
+    """The sections of a project dashboard view, which live in v3."""
+    if isinstance(view.v3, dict) and isinstance(view.v3.get("sections"), list):
+        return view.v3["sections"]
+    raise Exception(
+        f"View '{view.name}' has no dashboard sections (it uses an older format) "
+        "and cannot be edited here."
+    )
+
+
+def _find_panel(view: Any, chart_id: str) -> Dict[str, Any]:
+    for section in _view_sections(view):
+        for panel in section.get("panels", []):
+            if panel.get("chartId") == chart_id:
+                return panel
+    raise Exception(
+        f"Panel '{chart_id}' not found in view '{view.name}'. "
+        "Use list_views to find panel ids."
+    )
+
+
+def _append_to_section(section: Dict[str, Any], panel: Dict[str, Any]) -> None:
+    """Add a panel below a section's existing panels, one third of a row wide."""
+    layout = section.setdefault("layout", [])
+    bottom = max((item.get("y", 0) + item.get("h", 1) for item in layout), default=0)
+    section.setdefault("panels", []).append(panel)
+    layout.append(
+        {
+            "i": panel["chartId"],
+            "x": 0,
+            "y": bottom,
+            "w": 2,
+            "h": 1,
+            "minW": 2,
+            "maxH": 3,
+            "moved": False,
+            "static": False,
+        }
+    )
+
+
+@_instrument_tool
+def list_views(project_name: str, workspace: Optional[str] = None) -> Dict[str, Any]:
+    """
+    List the saved dashboard views of a project, with each view's sections and
+    panels. Use this to find the view_id and chart_id values that
+    create_javascript_panel, get_javascript_panel and update_javascript_panel
+    take.
+
+    Args:
+        project_name: The name of the project
+        workspace: The workspace name (defaults to the default workspace)
+
+    Returns:
+        Dictionary containing:
+        - workspace, project_name
+        - views: List of views, each with view_id, name, and sections; each
+          section has a title and its panels (chart_id, type, name)
+    """
+    with get_comet_api() as api:
+        target_workspace = _resolve_workspace(workspace)
+        views = api.get_views(target_workspace, project_name)
+
+        results = []
+        for view in views:
+            sections = []
+            if isinstance(view.v3, dict):
+                for section in view.v3.get("sections") or []:
+                    sections.append(
+                        {
+                            "title": section.get("title", ""),
+                            "panels": [
+                                {
+                                    "chart_id": panel.get("chartId", ""),
+                                    "type": panel.get("chartType", ""),
+                                    "name": panel.get("chartName")
+                                    or panel.get("instanceName")
+                                    or "",
+                                }
+                                for panel in section.get("panels", [])
+                            ],
+                        }
+                    )
+            results.append(
+                {"view_id": view.template_id, "name": view.name, "sections": sections}
+            )
+
+        return {
+            "workspace": target_workspace,
+            "project_name": project_name,
+            "views": results,
+        }
+
+
+@_instrument_tool
+def get_javascript_panel(
+    project_name: str,
+    view_id: str,
+    chart_id: str,
+    workspace: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Read the code, HTML, CSS and resources of a JavaScript panel on a project
+    dashboard view. Use list_views to find the view_id and chart_id.
+
+    Args:
+        project_name: The name of the project
+        view_id: The id of the view holding the panel
+        chart_id: The id of the JavaScript panel
+        workspace: The workspace name (defaults to the default workspace)
+
+    Returns:
+        Dictionary containing view_id, chart_id, name, code, html, css and
+        resources (a list of {"url", "type"})
+    """
+    with get_comet_api() as api:
+        target_workspace = _resolve_workspace(workspace)
+        view = _find_view(api, target_workspace, project_name, view_id)
+        panel = _find_panel(view, chart_id)
+        if panel.get("chartType") != "javascript":
+            raise Exception(
+                f"Panel '{chart_id}' is a '{panel.get('chartType')}' panel, "
+                "not a JavaScript panel."
+            )
+        code = panel.get("code") or {}
+        return {
+            "view_id": view_id,
+            "chart_id": chart_id,
+            "name": panel.get("chartName", ""),
+            "code": code.get("code", ""),
+            "html": code.get("html", ""),
+            "css": code.get("css", ""),
+            "resources": code.get("resources", []),
+        }
+
+
+@_instrument_tool
+def create_javascript_panel(
+    project_name: str,
+    code: str,
+    panel_name: str = "JavaScript panel",
+    view_id: Optional[str] = None,
+    view_name: Optional[str] = None,
+    section_title: Optional[str] = None,
+    html: Optional[str] = None,
+    css: Optional[str] = None,
+    resources: Optional[List[Dict[str, str]]] = None,
+    workspace: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Create a JavaScript panel on a project dashboard. With view_id, the panel is
+    added to that existing view; otherwise a new view is created holding just
+    this panel.
+    {guide}
+    Args:
+        project_name: The name of the project
+        code: The panel's JavaScript, defining a Comet.Panel subclass
+        panel_name: The panel's title
+        view_id: An existing view to add the panel to (see list_views); if omitted, a new view is created
+        view_name: The name of the new view (defaults to panel_name); ignored with view_id
+        section_title: The section to put the panel in; in an existing view, the section with this title (created if missing), else the view's first section
+        html: The panel's HTML (defaults to <div id="chart-mount"></div>)
+        css: The panel's CSS
+        resources: Extra scripts and stylesheets to load before the code, each {{"url": ..., "type": "script" or "stylesheet"}}
+        workspace: The workspace name (defaults to the default workspace)
+
+    Returns:
+        Dictionary containing status, view_id, view_name, chart_id and section
+    """
+    views = _views_module()
+    panel_kwargs: Dict[str, Any] = {"name": panel_name}
+    if html is not None:
+        panel_kwargs["html"] = html
+    if css is not None:
+        panel_kwargs["css"] = css
+    if resources:
+        panel_kwargs["resources"] = resources
+    panel = views.javascript_panel(code, **panel_kwargs)
+
+    with get_comet_api() as api:
+        target_workspace = _resolve_workspace(workspace)
+
+        if view_id:
+            view = _find_view(api, target_workspace, project_name, view_id)
+            sections = _view_sections(view)
+            if section_title:
+                section = next(
+                    (s for s in sections if s.get("title") == section_title), None
+                )
+            else:
+                section = sections[0] if sections else None
+            if section is None:
+                section = views.Section(section_title or "JavaScript panels").to_dict()
+                sections.append(section)
+            _append_to_section(section, panel)
+            saved = api.update_view(target_workspace, project_name, view)
+        else:
+            view = views.build_view(
+                view_name or panel_name,
+                sections=[views.Section(section_title or "JavaScript panels", [panel])],
+            )
+            section = view.v3["sections"][0]
+            saved = api.create_view(target_workspace, project_name, view)
+
+        if saved is None:
+            raise Exception("Comet did not save the view.")
+
+        return {
+            "status": "created",
+            "workspace": target_workspace,
+            "project_name": project_name,
+            "view_id": saved.template_id,
+            "view_name": saved.name,
+            "chart_id": panel["chartId"],
+            "section": section["title"],
+        }
+
+
+@_instrument_tool
+def update_javascript_panel(
+    project_name: str,
+    view_id: str,
+    chart_id: str,
+    code: Optional[str] = None,
+    html: Optional[str] = None,
+    css: Optional[str] = None,
+    resources: Optional[List[Dict[str, str]]] = None,
+    panel_name: Optional[str] = None,
+    workspace: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Change a JavaScript panel on a project dashboard view in place. Only the
+    fields given are changed. Use get_javascript_panel to read the current code
+    first.
+    {guide}
+    Args:
+        project_name: The name of the project
+        view_id: The id of the view holding the panel
+        chart_id: The id of the JavaScript panel
+        code: The new JavaScript
+        html: The new HTML
+        css: The new CSS
+        resources: The new list of scripts and stylesheets, each {{"url": ..., "type": "script" or "stylesheet"}}, replacing the old list
+        panel_name: The new title
+        workspace: The workspace name (defaults to the default workspace)
+
+    Returns:
+        Dictionary containing status, view_id, chart_id and the fields changed
+    """
+    views = _views_module()
+
+    with get_comet_api() as api:
+        target_workspace = _resolve_workspace(workspace)
+        view = _find_view(api, target_workspace, project_name, view_id)
+        panel = _find_panel(view, chart_id)
+        if panel.get("chartType") != "javascript":
+            raise Exception(
+                f"Panel '{chart_id}' is a '{panel.get('chartType')}' panel, "
+                "not a JavaScript panel."
+            )
+
+        old = panel.get("code") or {}
+        # Rebuilt with the factory so the new fields are checked the same way.
+        rebuilt = views.javascript_panel(
+            code if code is not None else old.get("code", ""),
+            html=html if html is not None else old.get("html", ""),
+            css=css if css is not None else old.get("css", ""),
+            resources=resources if resources is not None else old.get("resources", []),
+        )
+        panel["code"] = rebuilt["code"]
+        if panel_name is not None:
+            panel["chartName"] = panel_name
+
+        changed = [
+            name
+            for name, value in (
+                ("code", code),
+                ("html", html),
+                ("css", css),
+                ("resources", resources),
+                ("panel_name", panel_name),
+            )
+            if value is not None
+        ]
+
+        saved = api.update_view(target_workspace, project_name, view)
+        if saved is None:
+            raise Exception("Comet did not save the view.")
+
+        return {
+            "status": "updated",
+            "workspace": target_workspace,
+            "project_name": project_name,
+            "view_id": view_id,
+            "chart_id": chart_id,
+            "changed": changed,
+        }
+
+
+for _func in (create_javascript_panel, update_javascript_panel):
+    _func.__doc__ = (_func.__doc__ or "").format(guide=_JS_PANEL_GUIDE)
+
+
 def _initialize():
     from comet_mcp.session import initialize_session
 

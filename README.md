@@ -65,6 +65,15 @@ export COMET_WORKSPACE=your_workspace_name
 - **`count_project_experiments(project_name, workspace)`** - Count and analyze experiments in a project
 - **`get_session_info()`** - Get current session status and connection information
 
+### Dashboard Views and JavaScript Panels
+
+These need a `comet_ml` SDK with `comet_ml.views.javascript_panel`.
+
+- **`list_views(project_name, workspace)`** - List a project's dashboard views with their sections and panels
+- **`create_javascript_panel(project_name, code, ...)`** - Add a JavaScript panel to an existing view, or create a new view holding it
+- **`get_javascript_panel(project_name, view_id, chart_id, workspace)`** - Read a JavaScript panel's code, HTML, CSS and resources
+- **`update_javascript_panel(project_name, view_id, chart_id, ...)`** - Change a JavaScript panel's code, HTML, CSS, resources or title in place
+
 ### Tool Features
 
 - **Structured Data**: All tools return properly typed data structures
